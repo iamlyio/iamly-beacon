@@ -1,0 +1,6 @@
+.git
+.github
+beacon
+dist
+coverage.out
+*.log
