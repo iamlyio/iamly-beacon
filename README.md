@@ -1,6 +1,15 @@
-# Reviam Beacon
+# iamly.io Beacon
 
-Beacon is Reviam's customer-hosted collector. It gathers and enriches identity, account, access, and billing data inside the customer's infrastructure, then sends minimized observations to Reviam. Vendor credentials never leave the customer environment.
+Beacon is iamly.io's customer-hosted collector. It gathers and enriches identity, account, access, and billing data inside the customer's infrastructure, then sends minimized observations to iamly.io. Vendor credentials never leave the customer environment.
+
+[Beacon repository](https://github.com/iamlyio/iamly-beacon) ·
+[Control plane repository](https://github.com/iamlyio/iamly-app) ·
+[Product domain](https://iamly.io)
+
+Use `https://beacon.iamly.io` as the production control-plane URL. Each signed
+poll reports the host name, private interface addresses, and Beacon version;
+iamly.io observes the public source address at its trusted reverse proxy. No
+vendor credential or signing private key is included.
 
 ## Why Go
 
@@ -15,16 +24,34 @@ Beacon ships as one cross-platform binary with no language runtime to install. G
 - GCP Cloud KMS envelope encryption with CRC32C integrity validation.
 - Application Default Credentials and Workload Identity support—no GCP key file required.
 - Atomic vault writes with restrictive local permissions.
-- HTTPS enforcement for non-local Reviam control planes.
-- Locally generated Ed25519 Beacon identity; only the public key is enrolled with Reviam.
+- HTTPS enforcement for non-local iamly.io control planes.
+- Locally generated Ed25519 Beacon identity; only the public key is enrolled with iamly.io.
 - Single-use enrollment tokens are accepted through masked TUI input or standard input and are never persisted.
 - Signed, nonce-protected outbound review-job polling with concurrent per-app uploads.
-- Local Google Workspace, GitHub, and Slack account collectors.
+- Local Google Workspace, GitHub, Slack, and Zoom account collectors.
 - GitHub deploy-key inventory across accessible organization repositories; only non-secret metadata is uploaded, never key material.
 - GitHub current-month net billing usage, normalized as USD spend when the organization billing API is available.
 - Unit tests for enrollment, request signing, encryption, permissions, freshness, and tamper detection.
 
 `beacon run` is a long-running worker. Install `deploy/beacon.service` as a systemd user service on Linux so it restarts after failures and reboots without requiring an inbound port.
+
+## Review workflow
+
+1. A workspace requests a review in iamly.io.
+2. Beacon claims the job through signed outbound HTTPS; no inbound port is required.
+3. Configured collectors run independently and concurrently inside the customer environment.
+4. Each collector completes its application-specific profile, role, activity, credential, and billing enrichment locally.
+5. Beacon uploads each normalized application snapshot as soon as it is ready; one failed connector does not block the others.
+6. iamly.io waits for every requested connector to reach a terminal state, builds the unified access matrix, applies policy analysis, and retains findings and audit evidence.
+
+## Supported collectors
+
+| Application | Beacon vault names | Collected observations |
+| --- | --- | --- |
+| Google Workspace | `google.clientEmail`, `google.privateKey`, `google.adminEmail` | Directory identities, status, administrator role, creation time, last login |
+| GitHub | `github.token`, `github.org` | Members, outside collaborators, roles, public profile enrichment, deploy keys, available billing usage |
+| Slack | `slack.userToken` | Members, guest types, status, last-seen activity, billable-seat facts |
+| Zoom | `zoom.accountId`, `zoom.clientId`, `zoom.clientSecret` | Active, inactive, and pending users, roles, license type, last login |
 
 ## GCP prerequisites
 
@@ -67,12 +94,31 @@ addresses for the rest of the organization.
 
 Billing collection requires GitHub's enhanced billing platform. The organization usage-summary endpoint is currently a public preview, so Beacon treats unavailable billing as optional enrichment and still uploads a valid account and deploy-key snapshot.
 
+## Zoom collection
+
+Create a Zoom Server-to-Server OAuth application and store all three values
+through Beacon's masked secret entry or bounded stdin importer:
+
+```text
+zoom.accountId
+zoom.clientId
+zoom.clientSecret
+```
+
+Grant the granular read-only `user:read:list_users:admin` scope (or the classic
+`user:read:admin` equivalent). Beacon exchanges the three local values for a
+short-lived Zoom access token, inventories active, inactive, and pending users,
+enriches role and last-login information, and sends only normalized account
+observations to iamly.io.
+
 ## Develop
 
 Requires Go 1.25.13 or newer so Beacon includes the current standard-library
 TLS, URL, certificate, and HTTP security fixes.
 
 ```sh
+git clone https://github.com/iamlyio/iamly-beacon.git
+cd iamly-beacon
 make check
 make build
 ./beacon

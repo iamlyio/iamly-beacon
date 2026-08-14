@@ -16,11 +16,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/reviam/beacon/internal/collector"
-	"github.com/reviam/beacon/internal/config"
-	"github.com/reviam/beacon/internal/enrollment"
-	"github.com/reviam/beacon/internal/protocol"
-	"github.com/reviam/beacon/internal/vault"
+	"github.com/iamlyio/iamly-beacon/internal/collector"
+	"github.com/iamlyio/iamly-beacon/internal/config"
+	"github.com/iamlyio/iamly-beacon/internal/enrollment"
+	"github.com/iamlyio/iamly-beacon/internal/protocol"
+	"github.com/iamlyio/iamly-beacon/internal/vault"
 )
 
 const testKeyName = "projects/acme/locations/global/keyRings/reviam/cryptoKeys/beacon"

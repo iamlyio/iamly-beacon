@@ -14,7 +14,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/reviam/beacon/internal/protocol"
+	"github.com/iamlyio/iamly-beacon/internal/protocol"
 )
 
 func githubRequest(ctx context.Context, token, endpoint string) (*http.Response, error) {
@@ -116,7 +116,7 @@ func githubBillingSpend(ctx context.Context, token, org string) *protocol.Spend 
 		}
 		total += item.NetAmount
 	}
-	// Credits can make an individual usage item negative. Reviam's normalized
+	// Credits can make an individual usage item negative. The normalized
 	// spend contract is non-negative, so report the net payable floor.
 	total = math.Max(0, math.Round(total*10000)/10000)
 	return &protocol.Spend{Amount: total, Currency: "USD"}

@@ -1,9 +1,9 @@
 # Beacon architecture
 
-Beacon is Reviam's customer-hosted collection boundary.
+Beacon is iamly.io's customer-hosted collection boundary.
 
 ```text
-Reviam SaaS                           Customer infrastructure
+iamly.io SaaS                         Customer infrastructure
 ───────────                          ───────────────────────
 Create review job  ◀── outbound ───  Beacon long-polls for work
 Receive observations ◀─────────────  Vendor APIs + local enrichment
@@ -13,7 +13,7 @@ Apply policy and human decisions
 Create findings and evidence
 ```
 
-The control plane may only request fixed, versioned collection operations. It must never send shell commands, scripts, arbitrary URLs, or executable code. Beacon will contact only its configured Reviam control plane and compiled-in vendor API hosts.
+The control plane may only request fixed, versioned collection operations. It must never send shell commands, scripts, arbitrary URLs, or executable code. Beacon will contact only its configured iamly.io control plane and compiled-in vendor API hosts.
 
 ## GCP KMS envelope encryption
 

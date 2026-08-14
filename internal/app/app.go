@@ -18,12 +18,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/reviam/beacon/internal/collector"
-	"github.com/reviam/beacon/internal/config"
-	"github.com/reviam/beacon/internal/enrollment"
-	"github.com/reviam/beacon/internal/protocol"
-	"github.com/reviam/beacon/internal/tui"
-	"github.com/reviam/beacon/internal/vault"
+	"github.com/iamlyio/iamly-beacon/internal/collector"
+	"github.com/iamlyio/iamly-beacon/internal/config"
+	"github.com/iamlyio/iamly-beacon/internal/enrollment"
+	"github.com/iamlyio/iamly-beacon/internal/protocol"
+	"github.com/iamlyio/iamly-beacon/internal/tui"
+	"github.com/iamlyio/iamly-beacon/internal/vault"
 )
 
 var keyNamePattern = regexp.MustCompile(`^projects/[^/]+/locations/[^/]+/keyRings/[^/]+/cryptoKeys/[^/]+$`)
@@ -436,6 +436,7 @@ func (a *App) run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	client.Version = a.version
 	integrations := make([]string, 0, len(data.Integrations))
 	for integration := range data.Integrations {
 		if _, supported := collector.Supported[integration]; supported {
@@ -553,13 +554,13 @@ func validateSetup(result, initial tui.SetupResult, hasVault bool, version strin
 	}
 	parsed, err := url.ParseRequestURI(result.Data.ControlPlane.URL)
 	if err != nil || parsed.Host == "" {
-		return errors.New("Reviam control-plane URL must be absolute")
+		return errors.New("iamly.io control-plane URL must be absolute")
 	}
 	if parsed.Scheme != "https" && parsed.Hostname() != "localhost" && parsed.Hostname() != "127.0.0.1" {
-		return errors.New("Reviam control-plane URL must use HTTPS")
+		return errors.New("iamly.io control-plane URL must use HTTPS")
 	}
 	if parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
-		return errors.New("Reviam control-plane URL must not contain credentials, a query, or a fragment")
+		return errors.New("iamly.io control-plane URL must not contain credentials, a query, or a fragment")
 	}
 	name := strings.TrimSpace(result.Data.ControlPlane.BeaconName)
 	if name == "" || len(name) > 80 || strings.IndexFunc(name, func(character rune) bool {
@@ -607,7 +608,7 @@ func nonInteractiveSetup(arguments []string, initial tui.SetupResult, stdin io.R
 	flags := flag.NewFlagSet("beacon configure", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	keyName := flags.String("kms-key", "", "GCP KMS CryptoKey resource")
-	controlPlane := flags.String("control-plane", "", "Reviam control-plane URL")
+	controlPlane := flags.String("control-plane", "", "iamly.io control-plane URL")
 	name := flags.String("name", "", "Beacon name")
 	tokenFromStdin := flags.Bool("enrollment-token-stdin", false, "read the enrollment token from stdin")
 	if err := flags.Parse(arguments); err != nil {
@@ -642,7 +643,7 @@ func wipe(value []byte) {
 }
 
 func printHelp() {
-	fmt.Print(`Beacon — Reviam's customer-hosted collector
+	fmt.Print(`Beacon — iamly.io customer-hosted collector
 
 Usage:
   beacon                 Open the terminal interface

@@ -8,7 +8,7 @@ import (
 	"os/signal"
 	"strings"
 
-	"github.com/reviam/beacon/internal/app"
+	"github.com/iamlyio/iamly-beacon/internal/app"
 )
 
 var version = "dev"

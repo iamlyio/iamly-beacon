@@ -1,4 +1,4 @@
-module github.com/reviam/beacon
+module github.com/iamlyio/iamly-beacon
 
 go 1.25.13
 

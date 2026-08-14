@@ -23,6 +23,7 @@ type Client struct {
 	BaseURL    string
 	BeaconID   string
 	PrivateKey ed25519.PrivateKey
+	Version    string
 	HTTPClient *http.Client
 }
 
@@ -91,7 +92,14 @@ func New(baseURL, beaconID, privateKeyText string) (Client, error) {
 }
 
 func (c Client) Poll(ctx context.Context, integrations []string) (*Job, error) {
-	body, _ := json.Marshal(map[string]any{"protocolVersion": 1, "integrations": integrations})
+	hostname, privateIPs := hostMetadata()
+	body, _ := json.Marshal(map[string]any{
+		"protocolVersion": 1,
+		"integrations":    integrations,
+		"hostname":        hostname,
+		"privateIps":      privateIPs,
+		"version":         c.Version,
+	})
 	response, status, err := c.request(ctx, "/api/v1/beacon/jobs/poll", body)
 	if err != nil {
 		return nil, err

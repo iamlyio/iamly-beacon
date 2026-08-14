@@ -1,5 +1,5 @@
 [Unit]
-Description=Reviam Beacon outbound review collector
+Description=iamly.io Beacon outbound review collector
 After=network-online.target
 Wants=network-online.target
 

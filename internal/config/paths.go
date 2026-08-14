@@ -18,7 +18,13 @@ func ResolvePaths() (Paths, error) {
 		if err != nil {
 			return Paths{}, fmt.Errorf("resolve user config directory: %w", err)
 		}
-		home = filepath.Join(configHome, "reviam", "beacon")
+		home = filepath.Join(configHome, "iamly", "beacon")
+		legacyHome := filepath.Join(configHome, "reviam", "beacon")
+		if _, currentErr := os.Stat(filepath.Join(home, "vault.bin")); os.IsNotExist(currentErr) {
+			if _, legacyErr := os.Stat(filepath.Join(legacyHome, "vault.bin")); legacyErr == nil {
+				home = legacyHome
+			}
+		}
 	}
 	abs, err := filepath.Abs(home)
 	if err != nil {

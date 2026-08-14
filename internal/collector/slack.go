@@ -10,7 +10,7 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/reviam/beacon/internal/protocol"
+	"github.com/iamlyio/iamly-beacon/internal/protocol"
 )
 
 type slackUser struct {

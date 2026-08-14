@@ -18,7 +18,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/reviam/beacon/internal/protocol"
+	"github.com/iamlyio/iamly-beacon/internal/protocol"
 )
 
 const googleScope = "https://www.googleapis.com/auth/admin.directory.user.readonly"

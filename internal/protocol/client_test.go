@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -47,15 +48,25 @@ func TestPollSignsTheExactRequestAndParsesAJob(t *testing.T) {
 		var payload struct {
 			ProtocolVersion int      `json:"protocolVersion"`
 			Integrations    []string `json:"integrations"`
+			Hostname        string   `json:"hostname"`
+			PrivateIPs      []string `json:"privateIps"`
+			Version         string   `json:"version"`
 		}
-		if json.Unmarshal(body, &payload) != nil || payload.ProtocolVersion != 1 || strings.Join(payload.Integrations, ",") != "github,google,slack" {
+		if json.Unmarshal(body, &payload) != nil || payload.ProtocolVersion != 1 ||
+			strings.Join(payload.Integrations, ",") != "github,google,slack" ||
+			payload.Hostname == "" || payload.Version != "v1.2.3" {
 			t.Error("unexpected poll payload")
+		}
+		for _, address := range payload.PrivateIPs {
+			if ip := net.ParseIP(address); ip == nil || !ip.IsPrivate() {
+				t.Errorf("unexpected private IP %q", address)
+			}
 		}
 		response.Header().Set("Content-Type", "application/json")
 		io.WriteString(response, `{"protocolVersion":1,"job":{"id":"job_123","reviewRunId":42,"platforms":["github","google","slack"],"pendingPlatforms":["github","google","slack"],"leaseToken":"lease-123","claimGeneration":1}}`)
 	}))
 	defer server.Close()
-	client := Client{BaseURL: server.URL, BeaconID: "bcn_abcdefghijklmnopqrstuv", PrivateKey: privateKey, HTTPClient: server.Client()}
+	client := Client{BaseURL: server.URL, BeaconID: "bcn_abcdefghijklmnopqrstuv", PrivateKey: privateKey, Version: "v1.2.3", HTTPClient: server.Client()}
 	job, err := client.Poll(context.Background(), []string{"github", "google", "slack"})
 	if err != nil {
 		t.Fatal(err)

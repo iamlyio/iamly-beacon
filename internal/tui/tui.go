@@ -7,7 +7,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/reviam/beacon/internal/vault"
+	"github.com/iamlyio/iamly-beacon/internal/vault"
 )
 
 type Action string
@@ -41,7 +41,7 @@ var menuItems = []struct {
 	name, detail string
 	action       Action
 }{
-	{"Configure", "Connect Reviam and protect secrets with GCP KMS", Configure},
+	{"Configure", "Connect iamly.io and protect secrets with GCP KMS", Configure},
 	{"Store integration secret", "Enter a vendor credential using masked input", Secrets},
 	{"Status", "Inspect the local Beacon without revealing secrets", Status},
 	{"Run", "Wait for review collection jobs", Run},
@@ -82,7 +82,7 @@ func (m menuModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m menuModel) View() string {
 	view := brand.Render("◆") + "  " + title.Render("Beacon") + "  " + mutedStyle.Render(m.version)
-	view += "\n" + mutedStyle.Render("Reviam collection boundary · credentials stay here") + "\n\n"
+	view += "\n" + mutedStyle.Render("iamly.io collection boundary · credentials stay here") + "\n\n"
 	for index, item := range menuItems {
 		marker, label := "  ", item.name
 		if index == m.cursor {
@@ -198,11 +198,11 @@ type setupModel struct {
 }
 
 func Setup(initial SetupResult) (SetupResult, bool, error) {
-	labels := []string{"GCP KMS CryptoKey resource", "Reviam control-plane URL", "Beacon name", "Enrollment token"}
+	labels := []string{"GCP KMS CryptoKey resource", "iamly.io control-plane URL", "Beacon name", "Enrollment token"}
 	values := []string{initial.KeyName, initial.Data.ControlPlane.URL, initial.Data.ControlPlane.BeaconName, ""}
 	placeholders := []string{
 		"projects/acme/locations/global/keyRings/reviam/cryptoKeys/beacon-vault",
-		"https://app.reviam.example", "Production Beacon", "paste token from Reviam (blank keeps current identity)",
+		"https://iamly.io", "Production Beacon", "paste token from iamly.io (blank keeps current identity)",
 	}
 	inputs := make([]textinput.Model, len(labels))
 	for index := range labels {
