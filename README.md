@@ -69,7 +69,8 @@ Billing collection requires GitHub's enhanced billing platform. The organization
 
 ## Develop
 
-Requires Go 1.24 or newer.
+Requires Go 1.25.13 or newer so Beacon includes the current standard-library
+TLS, URL, certificate, and HTTP security fixes.
 
 ```sh
 make check
