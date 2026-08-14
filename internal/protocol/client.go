@@ -52,13 +52,34 @@ type Spend struct {
 	Currency string  `json:"currency"`
 }
 
+// DeployKey is non-secret GitHub deploy-key inventory metadata. Beacon must
+// never place private key material or a complete public key in this type.
+type DeployKey struct {
+	ID         string  `json:"id"`
+	Name       string  `json:"name"`
+	Repository string  `json:"repository"`
+	Access     string  `json:"access"`
+	CreatedAt  *string `json:"createdAt,omitempty"`
+	LastUsedAt *string `json:"lastUsedAt,omitempty"`
+	AddedBy    *string `json:"addedBy,omitempty"`
+}
+
+type DeployKeyCoverage struct {
+	Status           string  `json:"status"`
+	ResourcesScanned int     `json:"resourcesScanned"`
+	ResourcesTotal   int     `json:"resourcesTotal"`
+	Message          *string `json:"message,omitempty"`
+}
+
 type Result struct {
-	ProtocolVersion int      `json:"protocolVersion"`
-	Platform        string   `json:"platform"`
-	CapturedAt      string   `json:"capturedAt"`
-	Members         []Member `json:"members"`
-	Error           *string  `json:"error"`
-	ObservedSpend   *Spend   `json:"observedSpend,omitempty"`
+	ProtocolVersion   int                `json:"protocolVersion"`
+	Platform          string             `json:"platform"`
+	CapturedAt        string             `json:"capturedAt"`
+	Members           []Member           `json:"members"`
+	Error             *string            `json:"error"`
+	ObservedSpend     *Spend             `json:"observedSpend,omitempty"`
+	DeployKeys        []DeployKey        `json:"deployKeys,omitempty"`
+	DeployKeyCoverage *DeployKeyCoverage `json:"deployKeyCoverage,omitempty"`
 }
 
 func New(baseURL, beaconID, privateKeyText string) (Client, error) {

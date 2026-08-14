@@ -20,6 +20,8 @@ Beacon ships as one cross-platform binary with no language runtime to install. G
 - Single-use enrollment tokens are accepted through masked TUI input or standard input and are never persisted.
 - Signed, nonce-protected outbound review-job polling with concurrent per-app uploads.
 - Local Google Workspace, GitHub, and Slack account collectors.
+- GitHub deploy-key inventory across accessible organization repositories; only non-secret metadata is uploaded, never key material.
+- GitHub current-month net billing usage, normalized as USD spend when the organization billing API is available.
 - Unit tests for enrollment, request signing, encryption, permissions, freshness, and tamper detection.
 
 `beacon run` is a long-running worker. Install `deploy/beacon.service` as a systemd user service on Linux so it restarts after failures and reboots without requiring an inbound port.
@@ -39,6 +41,24 @@ projects/PROJECT/locations/LOCATION/keyRings/RING/cryptoKeys/KEY
 ```
 
 Authentication uses Google Application Default Credentials. On GCP, prefer an attached service account through Workload Identity. For local development, use `gcloud auth application-default login`.
+
+## GitHub collection
+
+Store these two values through `beacon secret set` or the bounded stdin importer:
+
+```text
+github.token
+github.org
+```
+
+Use a fine-grained personal access token owned by the organization and select all repositories. Grant read-only access to:
+
+- Repository Metadata, to enumerate repositories.
+- Repository Administration, to inventory active deploy keys.
+- Organization Members, to inventory members and outside collaborators.
+- Organization Administration, to read current-month billing usage.
+
+Billing collection requires GitHub's enhanced billing platform. The organization usage-summary endpoint is currently a public preview, so Beacon treats unavailable billing as optional enrichment and still uploads a valid account and deploy-key snapshot.
 
 ## Develop
 

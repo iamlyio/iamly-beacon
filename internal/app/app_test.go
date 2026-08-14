@@ -7,17 +7,181 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
+	"github.com/reviam/beacon/internal/collector"
 	"github.com/reviam/beacon/internal/config"
 	"github.com/reviam/beacon/internal/enrollment"
+	"github.com/reviam/beacon/internal/protocol"
 	"github.com/reviam/beacon/internal/vault"
 )
 
 const testKeyName = "projects/acme/locations/global/keyRings/reviam/cryptoKeys/beacon"
+
+func TestExecuteBeaconJobUploadsConnectorFailureWithoutStoppingSuccessfulCollectors(t *testing.T) {
+	original := collector.Supported
+	t.Cleanup(func() { collector.Supported = original })
+	collector.Supported = map[string]collector.Collector{
+		"google": func(context.Context, map[string]string) ([]protocol.Member, *protocol.Spend, error) {
+			email := "person@example.com"
+			return []protocol.Member{{Email: &email, Status: "active"}}, nil, nil
+		},
+		"github": func(context.Context, map[string]string) ([]protocol.Member, *protocol.Spend, error) {
+			return nil, nil, errors.New("GitHub API unavailable")
+		},
+	}
+
+	var mutex sync.Mutex
+	results := map[string]protocol.Result{}
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		if !strings.HasSuffix(request.URL.Path, "/results") {
+			http.Error(response, "unexpected path", http.StatusNotFound)
+			return
+		}
+		var result protocol.Result
+		if err := json.NewDecoder(request.Body).Decode(&result); err != nil {
+			http.Error(response, "invalid body", http.StatusBadRequest)
+			return
+		}
+		mutex.Lock()
+		results[result.Platform] = result
+		mutex.Unlock()
+		response.Header().Set("Content-Type", "application/json")
+		_, _ = response.Write([]byte(`{"complete":true}`))
+	}))
+	t.Cleanup(server.Close)
+
+	identity, err := enrollment.GenerateIdentity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	client, err := protocol.New(server.URL, "bcn_test", identity.PrivateKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	output := &bytes.Buffer{}
+	application := &App{stdout: output}
+	job := protocol.Job{
+		ID: "job_test", Platforms: []string{"google", "github"},
+		LeaseToken: "lease_test", ClaimGeneration: 1,
+	}
+	credentials := map[string]map[string]string{
+		"google": {"configured": "yes"},
+		"github": {"configured": "yes"},
+	}
+	if err := application.executeBeaconJob(context.Background(), client, job, credentials); err != nil {
+		t.Fatal(err)
+	}
+
+	mutex.Lock()
+	defer mutex.Unlock()
+	if len(results) != 2 {
+		t.Fatalf("uploaded %d results, want 2", len(results))
+	}
+	if got := results["google"]; got.Error != nil || len(got.Members) != 1 {
+		t.Fatalf("google result = %#v, want one successful member", got)
+	}
+	if got := results["github"]; got.Error == nil || *got.Error != "GitHub API unavailable" || len(got.Members) != 0 {
+		t.Fatalf("github result = %#v, want an isolated connector failure", got)
+	}
+	if !strings.Contains(output.String(), "collection complete") {
+		t.Fatalf("output = %q, want collection completion", output.String())
+	}
+}
+
+func TestExecuteBeaconJobUploadsEnrichedAppBeforeOtherConnectorsFinish(t *testing.T) {
+	original := collector.Supported
+	t.Cleanup(func() { collector.Supported = original })
+	slowStarted := make(chan struct{})
+	releaseSlow := make(chan struct{})
+	lastSeen := "2026-08-14T09:30:00Z"
+	name := "Ada Lovelace"
+	role := "administrator"
+	billable := true
+	collector.Supported = map[string]collector.Collector{
+		"google": func(context.Context, map[string]string) ([]protocol.Member, *protocol.Spend, error) {
+			return []protocol.Member{{
+				Email: stringPointer("ada@example.com"), Name: &name, Status: "active",
+				Role: &role, LastLoginAt: &lastSeen, Billable: &billable,
+			}}, nil, nil
+		},
+		"github": func(ctx context.Context, _ map[string]string) ([]protocol.Member, *protocol.Spend, error) {
+			close(slowStarted)
+			select {
+			case <-ctx.Done():
+				return nil, nil, ctx.Err()
+			case <-releaseSlow:
+				return []protocol.Member{}, nil, nil
+			}
+		},
+	}
+
+	googleUploaded := make(chan protocol.Result, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		var result protocol.Result
+		if err := json.NewDecoder(request.Body).Decode(&result); err != nil {
+			http.Error(response, "invalid body", http.StatusBadRequest)
+			return
+		}
+		if result.Platform == "google" {
+			googleUploaded <- result
+		}
+		response.Header().Set("Content-Type", "application/json")
+		_, _ = response.Write([]byte(`{"complete":true}`))
+	}))
+	t.Cleanup(server.Close)
+
+	identity, err := enrollment.GenerateIdentity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	client, err := protocol.New(server.URL, "bcn_stream_test", identity.PrivateKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	application := &App{stdout: io.Discard}
+	job := protocol.Job{
+		ID: "job_stream_test", Platforms: []string{"google", "github"},
+		LeaseToken: "lease_stream_test", ClaimGeneration: 1,
+	}
+	done := make(chan error, 1)
+	go func() {
+		done <- application.executeBeaconJob(context.Background(), client, job, map[string]map[string]string{
+			"google": {"configured": "yes"},
+			"github": {"configured": "yes"},
+		})
+	}()
+
+	select {
+	case <-slowStarted:
+	case <-time.After(time.Second):
+		t.Fatal("slow connector did not start")
+	}
+	select {
+	case result := <-googleUploaded:
+		if len(result.Members) != 1 || result.Members[0].Name == nil || *result.Members[0].Name != name ||
+			result.Members[0].LastLoginAt == nil || *result.Members[0].LastLoginAt != lastSeen ||
+			result.Members[0].Role == nil || *result.Members[0].Role != role ||
+			result.Members[0].Billable == nil || !*result.Members[0].Billable {
+			t.Fatalf("uploaded result was not fully enriched: %#v", result)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("completed app waited for the blocked sibling connector before upload")
+	}
+	close(releaseSlow)
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+}
+
+func stringPointer(value string) *string { return &value }
 
 type testKMS struct {
 	selfTested bool

@@ -6,8 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"sync"
 
@@ -20,6 +22,207 @@ func githubRequest(ctx context.Context, token, endpoint string) (*http.Response,
 	request.Header.Set("Accept", "application/vnd.github+json")
 	request.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 	return httpClient.Do(request)
+}
+
+type githubRepository struct {
+	Name     string `json:"name"`
+	FullName string `json:"full_name"`
+}
+
+type githubDeployKey struct {
+	ID        int64           `json:"id"`
+	Title     string          `json:"title"`
+	ReadOnly  bool            `json:"read_only"`
+	CreatedAt string          `json:"created_at"`
+	LastUsed  string          `json:"last_used"`
+	Enabled   *bool           `json:"enabled"`
+	AddedBy   json.RawMessage `json:"added_by"`
+}
+
+type githubBillingSummary struct {
+	UsageItems []struct {
+		NetAmount float64 `json:"netAmount"`
+	} `json:"usageItems"`
+}
+
+// githubBillingSpend returns GitHub's current-month net billed usage. Billing
+// enrichment is deliberately best effort: a preview endpoint or billing-plan
+// limitation must not discard a valid account snapshot.
+func githubBillingSpend(ctx context.Context, token, org string) *protocol.Spend {
+	endpoint := "https://api.github.com/organizations/" + url.PathEscape(org) + "/settings/billing/usage/summary"
+	response, err := githubRequest(ctx, token, endpoint)
+	if err != nil {
+		return nil
+	}
+	defer response.Body.Close()
+	if !successful(response.StatusCode) {
+		return nil
+	}
+	var payload githubBillingSummary
+	if json.NewDecoder(io.LimitReader(response.Body, 16<<20)).Decode(&payload) != nil {
+		return nil
+	}
+	total := 0.0
+	for _, item := range payload.UsageItems {
+		if math.IsNaN(item.NetAmount) || math.IsInf(item.NetAmount, 0) {
+			return nil
+		}
+		total += item.NetAmount
+	}
+	// Credits can make an individual usage item negative. Reviam's normalized
+	// spend contract is non-negative, so report the net payable floor.
+	total = math.Max(0, math.Round(total*10000)/10000)
+	return &protocol.Spend{Amount: total, Currency: "USD"}
+}
+
+func githubDeployKeyAddedBy(raw json.RawMessage) *string {
+	var login string
+	if json.Unmarshal(raw, &login) == nil {
+		return stringPointer(login)
+	}
+	var user struct {
+		Login string `json:"login"`
+	}
+	if json.Unmarshal(raw, &user) == nil {
+		return stringPointer(user.Login)
+	}
+	return nil
+}
+
+// GitHubDeployKeys inventories repository deploy keys without returning key
+// material. A denied repository produces partial coverage, not a connector
+// failure, so account collection and accessible repositories remain useful.
+func GitHubDeployKeys(ctx context.Context, credentials map[string]string) ([]protocol.DeployKey, protocol.DeployKeyCoverage) {
+	coverage := protocol.DeployKeyCoverage{Status: "unavailable"}
+	if err := require(credentials, "token", "org"); err != nil {
+		message := err.Error()
+		coverage.Message = &message
+		return nil, coverage
+	}
+	org := url.PathEscape(credentials["org"])
+	repositories := make([]githubRepository, 0)
+	for page := 1; ; page++ {
+		endpoint := "https://api.github.com/orgs/" + org + "/repos?type=all&per_page=100&page=" + strconv.Itoa(page)
+		response, err := githubRequest(ctx, credentials["token"], endpoint)
+		if err != nil {
+			message := "GitHub repository inventory could not be reached"
+			coverage.Message = &message
+			return nil, coverage
+		}
+		var payload []githubRepository
+		decodeErr := json.NewDecoder(io.LimitReader(response.Body, 16<<20)).Decode(&payload)
+		status := response.StatusCode
+		response.Body.Close()
+		if !successful(status) {
+			message := "GitHub did not permit repository inventory"
+			coverage.Message = &message
+			return nil, coverage
+		}
+		if decodeErr != nil {
+			message := "GitHub returned invalid repository inventory"
+			coverage.Message = &message
+			return nil, coverage
+		}
+		repositories = append(repositories, payload...)
+		if len(payload) < 100 {
+			break
+		}
+	}
+	coverage.ResourcesTotal = len(repositories)
+	coverage.Status = "complete"
+	if len(repositories) == 0 {
+		return []protocol.DeployKey{}, coverage
+	}
+
+	type scanResult struct {
+		credentials []protocol.DeployKey
+		scanned     bool
+	}
+	jobs := make(chan githubRepository)
+	results := make(chan scanResult, len(repositories))
+	var wait sync.WaitGroup
+	for worker := 0; worker < 6; worker++ {
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			for repository := range jobs {
+				fullName := repository.FullName
+				if fullName == "" {
+					fullName = credentials["org"] + "/" + repository.Name
+				}
+				found := make([]protocol.DeployKey, 0)
+				scanned := true
+				for page := 1; ; page++ {
+					endpoint := "https://api.github.com/repos/" + org + "/" + url.PathEscape(repository.Name) + "/keys?per_page=100&page=" + strconv.Itoa(page)
+					response, err := githubRequest(ctx, credentials["token"], endpoint)
+					if err != nil {
+						scanned = false
+						break
+					}
+					var payload []githubDeployKey
+					decodeErr := json.NewDecoder(io.LimitReader(response.Body, 16<<20)).Decode(&payload)
+					status := response.StatusCode
+					response.Body.Close()
+					if !successful(status) || decodeErr != nil {
+						scanned = false
+						break
+					}
+					for _, key := range payload {
+						if key.Enabled != nil && !*key.Enabled {
+							continue
+						}
+						access := "write"
+						if key.ReadOnly {
+							access = "read"
+						}
+						found = append(found, protocol.DeployKey{
+							ID: strconv.FormatInt(key.ID, 10), Name: key.Title,
+							Repository: fullName, Access: access, CreatedAt: stringPointer(key.CreatedAt),
+							LastUsedAt: stringPointer(key.LastUsed), AddedBy: githubDeployKeyAddedBy(key.AddedBy),
+						})
+					}
+					if len(payload) < 100 {
+						break
+					}
+				}
+				if !scanned {
+					results <- scanResult{}
+					continue
+				}
+				results <- scanResult{credentials: found, scanned: true}
+			}
+		}()
+	}
+	go func() {
+		for _, repository := range repositories {
+			jobs <- repository
+		}
+		close(jobs)
+		wait.Wait()
+		close(results)
+	}()
+	collected := make([]protocol.DeployKey, 0)
+	for result := range results {
+		if result.scanned {
+			coverage.ResourcesScanned++
+			collected = append(collected, result.credentials...)
+		}
+	}
+	if coverage.ResourcesScanned != coverage.ResourcesTotal {
+		coverage.Status = "partial"
+		message := "Some repositories did not permit deploy-key inventory"
+		coverage.Message = &message
+	}
+	sort.Slice(collected, func(left, right int) bool {
+		if collected[left].Repository != collected[right].Repository {
+			return collected[left].Repository < collected[right].Repository
+		}
+		if collected[left].Name != collected[right].Name {
+			return collected[left].Name < collected[right].Name
+		}
+		return collected[left].ID < collected[right].ID
+	})
+	return collected, coverage
 }
 
 func GitHub(ctx context.Context, credentials map[string]string) ([]protocol.Member, *protocol.Spend, error) {
@@ -101,7 +304,7 @@ func GitHub(ctx context.Context, credentials map[string]string) ([]protocol.Memb
 	}
 	close(jobs)
 	wait.Wait()
-	return members, nil, nil
+	return members, githubBillingSpend(ctx, credentials["token"], credentials["org"]), nil
 }
 
 func containsQuestion(value string) bool {

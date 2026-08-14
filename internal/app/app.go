@@ -493,6 +493,7 @@ func (a *App) executeBeaconJob(ctx context.Context, client protocol.Client, job 
 	}
 	fmt.Fprintf(a.output(), "Review job %s · collecting %d integrations\n", job.ID, len(platforms))
 	var wait sync.WaitGroup
+	var outputMutex sync.Mutex
 	errorsChannel := make(chan error, len(platforms))
 	for _, platform := range platforms {
 		platform := platform
@@ -507,6 +508,9 @@ func (a *App) executeBeaconJob(ctx context.Context, client protocol.Client, job 
 				message := "integration is not configured in this Beacon"
 				result.Error = &message
 			} else {
+				// A collector returns only after its app-specific profile, activity,
+				// role, and billing enrichment is complete. Upload that normalized
+				// app snapshot immediately; never wait for sibling connectors.
 				members, spend, err := collect(jobCtx, localCredentials)
 				if err != nil {
 					message := err.Error()
@@ -514,13 +518,20 @@ func (a *App) executeBeaconJob(ctx context.Context, client protocol.Client, job 
 				} else {
 					result.Members = members
 					result.ObservedSpend = spend
+					if platform == "github" {
+						deployKeys, coverage := collector.GitHubDeployKeys(jobCtx, localCredentials)
+						result.DeployKeys = deployKeys
+						result.DeployKeyCoverage = &coverage
+					}
 				}
 			}
 			if err := client.Upload(jobCtx, job, result); err != nil {
 				errorsChannel <- fmt.Errorf("upload %s result: %w", platform, err)
 				return
 			}
+			outputMutex.Lock()
 			fmt.Fprintf(a.output(), "Review job %s · %s collection uploaded\n", job.ID, platform)
+			outputMutex.Unlock()
 		}()
 	}
 	wait.Wait()
