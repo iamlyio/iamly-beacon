@@ -90,3 +90,34 @@ func TestControlPlaneErrorsNeverEchoTheRequestBody(t *testing.T) {
 		t.Fatalf("unsafe error: %v", err)
 	}
 }
+
+func TestUploadRetriesTransientFailureWithFreshSignedNonce(t *testing.T) {
+	_, privateKey, _ := ed25519.GenerateKey(rand.Reader)
+	attempts := 0
+	nonces := map[string]bool{}
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		attempts++
+		nonce := request.Header.Get("X-Reviam-Nonce")
+		if nonce == "" || nonces[nonce] {
+			t.Errorf("upload attempt reused or omitted nonce %q", nonce)
+		}
+		nonces[nonce] = true
+		if attempts == 1 {
+			http.Error(response, "temporary", http.StatusServiceUnavailable)
+			return
+		}
+		response.Header().Set("Content-Type", "application/json")
+		io.WriteString(response, `{"ok":true,"complete":true}`)
+	}))
+	defer server.Close()
+	client := Client{BaseURL: server.URL, BeaconID: "bcn_retry", PrivateKey: privateKey, HTTPClient: server.Client()}
+	err := client.Upload(context.Background(), Job{
+		ID: "job_retry", LeaseToken: "lease-retry", ClaimGeneration: 1,
+	}, Result{Platform: "github", CapturedAt: time.Now().UTC().Format(time.RFC3339Nano), Members: []Member{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if attempts != 2 || len(nonces) != 2 {
+		t.Fatalf("attempts=%d nonces=%d, want two", attempts, len(nonces))
+	}
+}

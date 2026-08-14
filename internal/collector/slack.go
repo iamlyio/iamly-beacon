@@ -51,7 +51,7 @@ func slackRole(user slackUser) string {
 func slackGet(ctx context.Context, token, endpoint string, output any) (string, error) {
 	request, _ := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	request.Header.Set("Authorization", "Bearer "+token)
-	response, err := httpClient.Do(request)
+	response, err := doVendorRequest(ctx, request)
 	if err != nil {
 		return "", fmt.Errorf("Slack collection failed: %w", err)
 	}

@@ -28,7 +28,7 @@ func zoomAccessToken(ctx context.Context, credentials map[string]string) (string
 	request, _ := http.NewRequestWithContext(ctx, http.MethodPost, endpoint.String(), nil)
 	basic := base64.StdEncoding.EncodeToString([]byte(credentials["clientId"] + ":" + credentials["clientSecret"]))
 	request.Header.Set("Authorization", "Basic "+basic)
-	response, err := httpClient.Do(request)
+	response, err := doVendorRequest(ctx, request)
 	if err != nil {
 		return "", fmt.Errorf("Zoom token exchange failed: %w", err)
 	}
@@ -78,7 +78,7 @@ func Zoom(ctx context.Context, credentials map[string]string) ([]protocol.Member
 			endpoint.RawQuery = query.Encode()
 			request, _ := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.String(), nil)
 			request.Header.Set("Authorization", "Bearer "+token)
-			response, err := httpClient.Do(request)
+			response, err := doVendorRequest(ctx, request)
 			if err != nil {
 				return nil, nil, fmt.Errorf("Zoom users collection failed: %w", err)
 			}

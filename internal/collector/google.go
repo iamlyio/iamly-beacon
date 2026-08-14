@@ -57,7 +57,7 @@ func googleAccessToken(ctx context.Context, credentials map[string]string) (stri
 		"assertion": {unsigned + "." + base64.RawURLEncoding.EncodeToString(signature)}}
 	request, _ := http.NewRequestWithContext(ctx, http.MethodPost, "https://oauth2.googleapis.com/token", strings.NewReader(form.Encode()))
 	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	response, err := httpClient.Do(request)
+	response, err := doVendorRequest(ctx, request)
 	if err != nil {
 		return "", fmt.Errorf("Google token exchange failed: %w", err)
 	}
@@ -103,7 +103,7 @@ func Google(ctx context.Context, credentials map[string]string) ([]protocol.Memb
 		endpoint.RawQuery = query.Encode()
 		request, _ := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.String(), nil)
 		request.Header.Set("Authorization", "Bearer "+token)
-		response, err := httpClient.Do(request)
+		response, err := doVendorRequest(ctx, request)
 		if err != nil {
 			return nil, nil, fmt.Errorf("Google users.list failed: %w", err)
 		}

@@ -28,6 +28,7 @@ Beacon ships as one cross-platform binary with no language runtime to install. G
 - Locally generated Ed25519 Beacon identity; only the public key is enrolled with iamly.io.
 - Single-use enrollment tokens are accepted through masked TUI input or standard input and are never persisted.
 - Signed, nonce-protected outbound review-job polling with concurrent per-app uploads.
+- Bounded transient retries for vendor APIs and idempotent result uploads; expired jobs resume with only their missing applications.
 - Local Google Workspace, GitHub, Slack, and Zoom account collectors.
 - GitHub deploy-key inventory across accessible organization repositories; only non-secret metadata is uploaded, never key material.
 - GitHub current-month net billing usage, normalized as USD spend when the organization billing API is available.
@@ -42,7 +43,8 @@ Beacon ships as one cross-platform binary with no language runtime to install. G
 3. Configured collectors run independently and concurrently inside the customer environment.
 4. Each collector completes its application-specific profile, role, activity, credential, and billing enrichment locally.
 5. Beacon uploads each normalized application snapshot as soon as it is ready; one failed connector does not block the others.
-6. iamly.io waits for every requested connector to reach a terminal state, builds the unified access matrix, applies policy analysis, and retains findings and audit evidence.
+6. A temporary network interruption is retried in place. If the job lease expires, Beacon reclaims it and reruns only applications whose snapshots were not accepted.
+7. iamly.io waits for every requested connector to reach a terminal state, builds the unified access matrix, applies policy analysis, and retains findings and audit evidence.
 
 ## Supported collectors
 

@@ -22,7 +22,7 @@ func githubRequest(ctx context.Context, token, endpoint string) (*http.Response,
 	request.Header.Set("Authorization", "Bearer "+token)
 	request.Header.Set("Accept", "application/vnd.github+json")
 	request.Header.Set("X-GitHub-Api-Version", "2022-11-28")
-	return httpClient.Do(request)
+	return doVendorRequest(ctx, request)
 }
 
 type githubRepository struct {

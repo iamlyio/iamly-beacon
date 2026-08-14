@@ -17,7 +17,11 @@ import (
 	"time"
 )
 
-const maxResponseBytes = 1 << 20
+const (
+	maxResponseBytes       = 1 << 20
+	resultUploadAttempts   = 3
+	resultUploadRetryDelay = 250 * time.Millisecond
+)
 
 type Client struct {
 	BaseURL    string
@@ -151,14 +155,30 @@ func (c Client) Upload(ctx context.Context, job Job, result Result) error {
 	if err != nil {
 		return errors.New("encode collection result")
 	}
-	response, status, err := c.request(ctx, "/api/v1/beacon/jobs/"+url.PathEscape(job.ID)+"/results", body)
-	if err != nil {
-		return err
+	path := "/api/v1/beacon/jobs/" + url.PathEscape(job.ID) + "/results"
+	for attempt := 0; attempt < resultUploadAttempts; attempt++ {
+		response, status, requestErr := c.request(ctx, path, body)
+		if requestErr == nil && status == http.StatusOK {
+			return nil
+		}
+		retryable := requestErr != nil || status == http.StatusRequestTimeout ||
+			status == http.StatusTooEarly || status == http.StatusTooManyRequests || status >= 500
+		if !retryable || attempt == resultUploadAttempts-1 {
+			if requestErr != nil {
+				return requestErr
+			}
+			return responseError(status, response)
+		}
+		delay := resultUploadRetryDelay * time.Duration(1<<attempt)
+		timer := time.NewTimer(delay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return ctx.Err()
+		case <-timer.C:
+		}
 	}
-	if status != http.StatusOK {
-		return responseError(status, response)
-	}
-	return nil
+	return errors.New("control-plane upload retry exhausted")
 }
 
 func (c Client) request(ctx context.Context, path string, body []byte) ([]byte, int, error) {
