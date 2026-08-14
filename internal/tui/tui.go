@@ -95,8 +95,9 @@ func (m menuModel) View() string {
 }
 
 type SetupResult struct {
-	KeyName string
-	Data    vault.Data
+	KeyName         string
+	Data            vault.Data
+	EnrollmentToken string
 }
 
 type SecretResult struct {
@@ -197,11 +198,11 @@ type setupModel struct {
 }
 
 func Setup(initial SetupResult) (SetupResult, bool, error) {
-	labels := []string{"GCP KMS CryptoKey resource", "Reviam control-plane URL", "Beacon ID", "Enrollment token"}
-	values := []string{initial.KeyName, initial.Data.ControlPlane.URL, initial.Data.ControlPlane.BeaconID, ""}
+	labels := []string{"GCP KMS CryptoKey resource", "Reviam control-plane URL", "Beacon name", "Enrollment token"}
+	values := []string{initial.KeyName, initial.Data.ControlPlane.URL, initial.Data.ControlPlane.BeaconName, ""}
 	placeholders := []string{
 		"projects/acme/locations/global/keyRings/reviam/cryptoKeys/beacon-vault",
-		"https://app.reviam.example", "beacon_prod_01", "paste token from Reviam",
+		"https://app.reviam.example", "Production Beacon", "paste token from Reviam (blank keeps current identity)",
 	}
 	inputs := make([]textinput.Model, len(labels))
 	for index := range labels {
@@ -231,16 +232,13 @@ func Setup(initial SetupResult) (SetupResult, bool, error) {
 	if data.Integrations == nil {
 		data.Integrations = make(map[string]map[string]string)
 	}
-	token := final.inputs[3].Value()
-	if token == "" {
-		token = initial.Data.ControlPlane.BeaconToken
-	}
-	data.ControlPlane = vault.ControlPlane{
-		URL:         strings.TrimRight(strings.TrimSpace(final.inputs[1].Value()), "/"),
-		BeaconID:    strings.TrimSpace(final.inputs[2].Value()),
-		BeaconToken: token,
-	}
-	return SetupResult{KeyName: strings.TrimSpace(final.inputs[0].Value()), Data: data}, true, nil
+	data.ControlPlane.URL = strings.TrimRight(strings.TrimSpace(final.inputs[1].Value()), "/")
+	data.ControlPlane.BeaconName = strings.TrimSpace(final.inputs[2].Value())
+	return SetupResult{
+		KeyName:         strings.TrimSpace(final.inputs[0].Value()),
+		Data:            data,
+		EnrollmentToken: strings.TrimSpace(final.inputs[3].Value()),
+	}, true, nil
 }
 
 func (m setupModel) Init() tea.Cmd { return textinput.Blink }
@@ -284,6 +282,6 @@ func (m setupModel) View() string {
 	for index := range m.inputs {
 		view += m.inputs[index].View() + "\n\n"
 	}
-	view += active.Render("Enter") + " save  •  " + mutedStyle.Render("tab next  •  esc cancel")
+	view += active.Render("Enter") + " configure  •  " + mutedStyle.Render("tab next  •  esc cancel")
 	return panel.Width(86).Render(view)
 }

@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -27,7 +29,13 @@ func TestVaultRoundTripAndPermissions(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "vault.bin")
 	store := NewStore(path, "projects/acme/locations/global/keyRings/reviam/cryptoKeys/beacon", memoryWrapper{key: 0x5a})
 	want := Data{
-		ControlPlane: ControlPlane{URL: "https://app.reviam.example", BeaconID: "beacon_01", BeaconToken: "enrollment-secret-value"},
+		ControlPlane: ControlPlane{
+			URL:               "https://app.reviam.example",
+			BeaconID:          "beacon_01",
+			BeaconName:        "Production",
+			SigningPrivateKey: "private-signing-key",
+			SigningPublicKey:  "public-signing-key",
+		},
 		Integrations: map[string]map[string]string{"github": {"token": "github-secret"}},
 	}
 	if err := store.Save(context.Background(), want); err != nil {
@@ -37,7 +45,7 @@ func TestVaultRoundTripAndPermissions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, secret := range [][]byte{[]byte("enrollment-secret-value"), []byte("github-secret")} {
+	for _, secret := range [][]byte{[]byte("private-signing-key"), []byte("github-secret")} {
 		if bytes.Contains(blob, secret) {
 			t.Fatalf("encrypted vault contains plaintext %q", secret)
 		}
@@ -53,8 +61,8 @@ func TestVaultRoundTripAndPermissions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
-	if got.ControlPlane.BeaconToken != want.ControlPlane.BeaconToken {
-		t.Fatal("control-plane secret did not round trip")
+	if got.ControlPlane.SigningPrivateKey != want.ControlPlane.SigningPrivateKey {
+		t.Fatal("signing private key did not round trip")
 	}
 	if got.Integrations["github"]["token"] != "github-secret" {
 		t.Fatal("integration secret did not round trip")
@@ -95,5 +103,26 @@ func TestTamperingIsRejected(t *testing.T) {
 	}
 	if _, err := store.Load(context.Background()); err == nil {
 		t.Fatal("Load() accepted a modified vault")
+	}
+}
+
+func TestKMSSelfTestWrapsAndUnwraps(t *testing.T) {
+	if err := SelfTest(context.Background(), "key", memoryWrapper{key: 0x5a}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestLegacyEnrollmentTokenIsDiscarded(t *testing.T) {
+	legacy := []byte(`{"control_plane":{"url":"https://control.example","beacon_id":"legacy","beacon_token":"must-not-survive"}}`)
+	var data Data
+	if err := json.Unmarshal(legacy, &data); err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.Marshal(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), "must-not-survive") || strings.Contains(string(encoded), "beacon_token") {
+		t.Fatalf("legacy token survived migration: %s", encoded)
 	}
 }

@@ -16,9 +16,13 @@ Beacon ships as one cross-platform binary with no language runtime to install. G
 - Application Default Credentials and Workload Identity support—no GCP key file required.
 - Atomic vault writes with restrictive local permissions.
 - HTTPS enforcement for non-local Reviam control planes.
-- Unit tests for encryption, permissions, freshness, and tamper detection.
+- Locally generated Ed25519 Beacon identity; only the public key is enrolled with Reviam.
+- Single-use enrollment tokens are accepted through masked TUI input or standard input and are never persisted.
+- Signed, nonce-protected outbound review-job polling with concurrent per-app uploads.
+- Local Google Workspace, GitHub, and Slack account collectors.
+- Unit tests for enrollment, request signing, encryption, permissions, freshness, and tamper detection.
 
-The TUI and GCP KMS vault are the first milestone. Vendor adapters and the outbound Reviam job transport are next; `beacon run` currently fails clearly instead of pretending to collect.
+`beacon run` is a long-running worker. Install `deploy/beacon.service` as a systemd user service on Linux so it restarts after failures and reboots without requiring an inbound port.
 
 ## GCP prerequisites
 
@@ -52,12 +56,26 @@ Set `BEACON_HOME` to choose a local runtime directory. Otherwise Beacon uses the
 
 ```text
 beacon                 Open the interactive terminal interface
-beacon configure       Configure GCP KMS and create the encrypted local vault
+beacon configure       Configure GCP KMS and enroll through the interactive TUI
+beacon configure --kms-key KEY --control-plane URL --name NAME --enrollment-token-stdin
+                       Configure noninteractively, reading the one-time token from stdin
 beacon secret set      Enter and encrypt an integration secret
+beacon secret import --stdin
+                       Atomically import a bounded versioned credential bundle from a pipe
 beacon secret list     List configured secret names without revealing values
 beacon status          Decrypt and inspect configuration without exposing secrets
 beacon run             Start the outbound collection worker
 beacon version         Print the build version
+```
+
+On a Linux host:
+
+```sh
+install -d -m 0700 ~/.config/systemd/user
+install -m 0600 deploy/beacon.service ~/.config/systemd/user/beacon.service
+systemctl --user daemon-reload
+systemctl --user enable --now beacon.service
+sudo loginctl enable-linger "$USER"
 ```
 
 See [the architecture](docs/ARCHITECTURE.md) for the SaaS/Beacon trust boundary.

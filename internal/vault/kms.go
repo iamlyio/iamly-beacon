@@ -1,9 +1,12 @@
 package vault
 
 import (
+	"bytes"
 	"context"
+	"crypto/rand"
 	"fmt"
 	"hash/crc32"
+	"io"
 
 	kms "cloud.google.com/go/kms/apiv1"
 	"cloud.google.com/go/kms/apiv1/kmspb"
@@ -13,6 +16,31 @@ import (
 type KeyWrapper interface {
 	Wrap(context.Context, string, []byte) ([]byte, error)
 	Unwrap(context.Context, string, []byte) ([]byte, error)
+}
+
+// SelfTest verifies that the configured key can both wrap and unwrap data
+// before a single-use enrollment token is sent to the control plane.
+func SelfTest(ctx context.Context, keyName string, wrapper KeyWrapper) error {
+	probe := make([]byte, 32)
+	if _, err := io.ReadFull(rand.Reader, probe); err != nil {
+		return fmt.Errorf("generate GCP KMS self-test value: %w", err)
+	}
+	defer wipe(probe)
+
+	wrapped, err := wrapper.Wrap(ctx, keyName, probe)
+	if err != nil {
+		return fmt.Errorf("GCP KMS self-test: %w", err)
+	}
+	defer wipe(wrapped)
+	unwrapped, err := wrapper.Unwrap(ctx, keyName, wrapped)
+	if err != nil {
+		return fmt.Errorf("GCP KMS self-test: %w", err)
+	}
+	defer wipe(unwrapped)
+	if !bytes.Equal(probe, unwrapped) {
+		return fmt.Errorf("GCP KMS self-test: unwrapped value does not match")
+	}
+	return nil
 }
 
 type GCPKMS struct {
