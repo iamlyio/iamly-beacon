@@ -124,3 +124,68 @@ func TestGitHubBillingFailureDoesNotInventSpend(t *testing.T) {
 		t.Fatalf("spend = %#v, want nil", spend)
 	}
 }
+
+func TestGitHubEnrichesMembersWithPublicProfileEmails(t *testing.T) {
+	original := httpClient
+	t.Cleanup(func() { httpClient = original })
+	httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		switch request.URL.Path {
+		case "/orgs/acme/members":
+			if request.URL.Query().Get("role") == "admin" {
+				return jsonResponse(http.StatusOK, `[{"id":1,"login":"octocat"}]`), nil
+			}
+			return jsonResponse(http.StatusOK, `[]`), nil
+		case "/orgs/acme/outside_collaborators":
+			return jsonResponse(http.StatusOK, `[{"id":2,"login":"private-cat"}]`), nil
+		case "/users/octocat":
+			return jsonResponse(http.StatusOK, `{"name":"Octo Cat","email":"octocat@example.com"}`), nil
+		case "/users/private-cat":
+			return jsonResponse(http.StatusOK, `{"name":"Private Cat","email":null}`), nil
+		case "/user":
+			return jsonResponse(http.StatusOK, `{"login":"octocat"}`), nil
+		case "/user/emails":
+			return jsonResponse(http.StatusOK, `[{"email":"private-primary@example.com","primary":true,"verified":true,"visibility":null}]`), nil
+		case "/organizations/acme/settings/billing/usage/summary":
+			return jsonResponse(http.StatusForbidden, `{"message":"billing unavailable"}`), nil
+		default:
+			t.Fatalf("unexpected GitHub request %s?%s", request.URL.Path, request.URL.RawQuery)
+			return nil, nil
+		}
+	})}
+
+	members, _, err := GitHub(context.Background(), map[string]string{"token": "secret-token", "org": "acme"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(members) != 2 {
+		t.Fatalf("members = %#v", members)
+	}
+	if members[0].Email == nil || *members[0].Email != "private-primary@example.com" ||
+		members[0].Name == nil || *members[0].Name != "Octo Cat" {
+		t.Fatalf("public member = %#v", members[0])
+	}
+	if members[1].Email != nil || members[1].Name == nil || *members[1].Name != "Private Cat" {
+		t.Fatalf("private-email member = %#v", members[1])
+	}
+}
+
+func TestGitHubTokenOwnerEmailRequiresAVerifiedAddress(t *testing.T) {
+	original := httpClient
+	t.Cleanup(func() { httpClient = original })
+	httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		switch request.URL.Path {
+		case "/user":
+			return jsonResponse(http.StatusOK, `{"login":"octocat"}`), nil
+		case "/user/emails":
+			return jsonResponse(http.StatusOK, `[{"email":"unverified@example.com","primary":true,"verified":false},{"email":"verified@example.com","primary":false,"verified":true}]`), nil
+		default:
+			t.Fatalf("unexpected GitHub path %s", request.URL.Path)
+			return nil, nil
+		}
+	})}
+
+	login, email, ok := githubTokenOwnerEmail(context.Background(), "secret-token")
+	if !ok || login != "octocat" || email != "verified@example.com" {
+		t.Fatalf("owner email = %q, %q, %v", login, email, ok)
+	}
+}

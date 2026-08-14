@@ -58,6 +58,13 @@ Use a fine-grained personal access token owned by the organization and select al
 - Organization Members, to inventory members and outside collaborators.
 - Organization Administration, to read current-month billing usage.
 
+Beacon enriches each organization account from its GitHub user profile and
+includes the profile email when the user has made it public. GitHub does not
+expose other members' private email addresses through the authenticated-user
+email permission. The optional Account permission **Email addresses: Read**
+adds the token owner's verified primary email only; it does not reveal private
+addresses for the rest of the organization.
+
 Billing collection requires GitHub's enhanced billing platform. The organization usage-summary endpoint is currently a public preview, so Beacon treats unavailable billing as optional enrichment and still uploads a valid account and deploy-key snapshot.
 
 ## Develop

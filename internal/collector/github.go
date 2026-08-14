@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/reviam/beacon/internal/protocol"
@@ -43,6 +44,52 @@ type githubBillingSummary struct {
 	UsageItems []struct {
 		NetAmount float64 `json:"netAmount"`
 	} `json:"usageItems"`
+}
+
+// githubTokenOwnerEmail uses GitHub's Email addresses: Read permission only
+// for the authenticated token owner. GitHub does not allow this endpoint to
+// reveal private addresses belonging to other organization members.
+func githubTokenOwnerEmail(ctx context.Context, token string) (string, string, bool) {
+	profileResponse, err := githubRequest(ctx, token, "https://api.github.com/user")
+	if err != nil {
+		return "", "", false
+	}
+	var profile struct {
+		Login string `json:"login"`
+	}
+	profileErr := json.NewDecoder(io.LimitReader(profileResponse.Body, 1<<20)).Decode(&profile)
+	profileStatus := profileResponse.StatusCode
+	profileResponse.Body.Close()
+	if !successful(profileStatus) || profileErr != nil || profile.Login == "" {
+		return "", "", false
+	}
+
+	emailResponse, err := githubRequest(ctx, token, "https://api.github.com/user/emails?per_page=100")
+	if err != nil {
+		return "", "", false
+	}
+	var emails []struct {
+		Email    string `json:"email"`
+		Primary  bool   `json:"primary"`
+		Verified bool   `json:"verified"`
+	}
+	emailErr := json.NewDecoder(io.LimitReader(emailResponse.Body, 1<<20)).Decode(&emails)
+	emailStatus := emailResponse.StatusCode
+	emailResponse.Body.Close()
+	if !successful(emailStatus) || emailErr != nil {
+		return "", "", false
+	}
+	for _, email := range emails {
+		if email.Primary && email.Verified && email.Email != "" {
+			return profile.Login, email.Email, true
+		}
+	}
+	for _, email := range emails {
+		if email.Verified && email.Email != "" {
+			return profile.Login, email.Email, true
+		}
+	}
+	return "", "", false
 }
 
 // githubBillingSpend returns GitHub's current-month net billed usage. Billing
@@ -289,12 +336,21 @@ func GitHub(ctx context.Context, credentials map[string]string) ([]protocol.Memb
 					continue
 				}
 				var profile struct {
-					Name string `json:"name"`
+					Name  string `json:"name"`
+					Email string `json:"email"`
 				}
 				decodeErr := json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&profile)
 				response.Body.Close()
 				if successful(response.StatusCode) && decodeErr == nil {
-					members[index].Name = stringPointer(profile.Name)
+					if profile.Name != "" {
+						members[index].Name = stringPointer(profile.Name)
+					}
+					// GitHub exposes only the address the account owner chose to make
+					// public. The authenticated-user email endpoint must not be used
+					// here because it cannot reveal other organization members' mail.
+					if profile.Email != "" {
+						members[index].Email = stringPointer(profile.Email)
+					}
 				}
 			}
 		}()
@@ -304,6 +360,14 @@ func GitHub(ctx context.Context, credentials map[string]string) ([]protocol.Memb
 	}
 	close(jobs)
 	wait.Wait()
+	if login, email, ok := githubTokenOwnerEmail(ctx, credentials["token"]); ok {
+		for index := range members {
+			if members[index].Username != nil && strings.EqualFold(*members[index].Username, login) {
+				members[index].Email = stringPointer(email)
+				break
+			}
+		}
+	}
 	return members, githubBillingSpend(ctx, credentials["token"], credentials["org"]), nil
 }
 
