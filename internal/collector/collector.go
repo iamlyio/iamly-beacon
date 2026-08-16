@@ -15,10 +15,11 @@ import (
 type Collector func(context.Context, map[string]string) ([]protocol.Member, *protocol.Spend, error)
 
 var Supported = map[string]Collector{
-	"google": Google,
-	"github": GitHub,
-	"slack":  Slack,
-	"zoom":   Zoom,
+	"bamboohr": BambooHR,
+	"google":   Google,
+	"github":   GitHub,
+	"slack":    Slack,
+	"zoom":     Zoom,
 }
 
 var httpClient = &http.Client{Timeout: 40 * time.Second}

@@ -133,7 +133,7 @@ func Secret() (SecretResult, bool, error) {
 	}
 	return SecretResult{
 		Integration: strings.ToLower(strings.TrimSpace(final.inputs[0].Value())),
-		Name:        strings.ToLower(strings.TrimSpace(final.inputs[1].Value())),
+		Name:        strings.TrimSpace(final.inputs[1].Value()),
 		Value:       final.inputs[2].Value(),
 	}, true, nil
 }

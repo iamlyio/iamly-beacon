@@ -29,7 +29,7 @@ Beacon ships as one cross-platform binary with no language runtime to install. G
 - Single-use enrollment tokens are accepted through masked TUI input or standard input and are never persisted.
 - Signed, nonce-protected outbound review-job polling with concurrent per-app uploads.
 - Bounded transient retries for vendor APIs and idempotent result uploads; expired jobs resume with only their missing applications.
-- Local Google Workspace, GitHub, Slack, and Zoom account collectors.
+- Local BambooHR, Google Workspace, GitHub, Slack, and Zoom account collectors.
 - GitHub deploy-key inventory across accessible organization repositories; only non-secret metadata is uploaded, never key material.
 - GitHub current-month net billing usage, normalized as USD spend when the organization billing API is available.
 - Unit tests for enrollment, request signing, encryption, permissions, freshness, and tamper detection.
@@ -50,10 +50,30 @@ Beacon ships as one cross-platform binary with no language runtime to install. G
 
 | Application | Beacon vault names | Collected observations |
 | --- | --- | --- |
+| BambooHR | `bamboohr.companyDomain`, `bamboohr.apiKey` | Complete employee roster, active/inactive lifecycle, work email, job title, department, hire date |
 | Google Workspace | `google.clientEmail`, `google.privateKey`, `google.adminEmail` | Directory identities, status, administrator role, creation time, last login |
 | GitHub | `github.token`, `github.org` | Members, outside collaborators, roles, public profile enrichment, deploy keys, available billing usage |
 | Slack | `slack.userToken` | Members, guest types, status, last-seen activity, billable-seat facts |
 | Zoom | `zoom.accountId`, `zoom.clientId`, `zoom.clientSecret` | Active, inactive, and pending users, roles, license type, last login |
+
+## BambooHR collection
+
+Create a dedicated read-only API key owned by a BambooHR user who can view the
+complete employee roster and the work email, hire date, department, and job
+title fields. Store the company subdomain and key through Beacon:
+
+```text
+bamboohr.companyDomain
+bamboohr.apiKey
+```
+
+Credential names are case-sensitive; enter `companyDomain` and `apiKey`
+exactly as shown.
+
+For `https://acme.bamboohr.com`, the company domain is `acme`. Beacon calls only
+the read-only employee roster endpoint. It intentionally does not use the
+optional company directory because BambooHR excludes inactive and former
+employees from that directory.
 
 ## GCP prerequisites
 
