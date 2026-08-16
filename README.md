@@ -15,6 +15,9 @@ vendor credential or signing private key is included.
 
 Beacon ships as one cross-platform binary with no language runtime to install. Go fits an always-running collector and keeps the security-sensitive boundary small enough to audit.
 
+The repository follows Semantic Versioning. Release builds read the current
+version from `VERSION`; `make build` stamps that value into `beacon version`.
+
 ## Current foundation
 
 - Interactive terminal interface built with Bubble Tea.
@@ -56,11 +59,42 @@ Beacon ships as one cross-platform binary with no language runtime to install. G
 | Slack | `slack.userToken` | Members, guest types, status, last-seen activity, billable-seat facts |
 | Zoom | `zoom.accountId`, `zoom.clientId`, `zoom.clientSecret` | Active, inactive, and pending users, roles, license type, last login |
 
+Each supported collector has guided credential setup:
+
+```sh
+beacon secret set bamboohr
+beacon secret set github
+beacon secret set google
+beacon secret set slack
+beacon secret set zoom
+```
+
+Beacon prompts for every required value, masks tokens and private keys, and
+writes the complete integration profile to the encrypted vault in one update.
+Running `beacon secret set` without an integration remains available for
+generic single-secret entry.
+
+`beacon run` reads the vault when the worker starts. If Beacon is already
+running as a service, restart it after adding or changing credentials so the
+control plane receives the new integration inventory before another review is
+queued:
+
+```sh
+systemctl --user restart beacon.service
+systemctl --user status beacon.service --no-pager
+journalctl --user -u beacon.service -n 20 --no-pager
+```
+
+The startup log reports the number of integrations available. Confirm that
+count and the integration status in iamly.io before starting a review. A review
+keeps the application scope it had when queued; restarting Beacon cannot add a
+new integration retroactively to an in-progress review.
+
 ## BambooHR collection
 
 Create a dedicated read-only API key owned by a BambooHR user who can view the
 complete employee roster and the work email, hire date, department, and job
-title fields. Store the company subdomain and key through Beacon:
+title fields. Run `beacon secret set bamboohr` and follow the prompts for:
 
 ```text
 bamboohr.companyDomain
@@ -93,7 +127,8 @@ Authentication uses Google Application Default Credentials. On GCP, prefer an at
 
 ## GitHub collection
 
-Store these two values through `beacon secret set` or the bounded stdin importer:
+Run `beacon secret set github` and follow the prompts, or use the bounded stdin
+importer, for:
 
 ```text
 github.token
@@ -118,8 +153,9 @@ Billing collection requires GitHub's enhanced billing platform. The organization
 
 ## Zoom collection
 
-Create a Zoom Server-to-Server OAuth application and store all three values
-through Beacon's masked secret entry or bounded stdin importer:
+Create a Zoom Server-to-Server OAuth application, then run
+`beacon secret set zoom` and follow the prompts (or use the bounded stdin
+importer) for:
 
 ```text
 zoom.accountId
@@ -155,7 +191,9 @@ beacon                 Open the interactive terminal interface
 beacon configure       Configure GCP KMS and enroll through the interactive TUI
 beacon configure --kms-key KEY --control-plane URL --name NAME --enrollment-token-stdin
                        Configure noninteractively, reading the one-time token from stdin
-beacon secret set      Enter and encrypt an integration secret
+beacon secret set [integration]
+                       Guided setup for bamboohr, github, google, slack, or zoom;
+                       omit integration for generic single-secret entry
 beacon secret import --stdin
                        Atomically import a bounded versioned credential bundle from a pipe
 beacon secret list     List configured secret names without revealing values
@@ -173,6 +211,9 @@ systemctl --user daemon-reload
 systemctl --user enable --now beacon.service
 sudo loginctl enable-linger "$USER"
 ```
+
+After any `beacon secret set ...` command, restart this service to reload the
+vault and advertise the updated collector list.
 
 See [the architecture](docs/ARCHITECTURE.md) for the SaaS/Beacon trust boundary.
 

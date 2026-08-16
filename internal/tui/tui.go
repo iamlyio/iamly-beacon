@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/textinput"
@@ -106,6 +107,83 @@ type SecretResult struct {
 	Value       string
 }
 
+type GuidedSecretResult struct {
+	Integration string
+	Values      map[string]string
+}
+
+type guidedSecretField struct {
+	name        string
+	label       string
+	placeholder string
+	secret      bool
+}
+
+type guidedSecretSpec struct {
+	label  string
+	fields []guidedSecretField
+}
+
+var guidedSecretSpecs = map[string]guidedSecretSpec{
+	"bamboohr": {
+		label: "BambooHR",
+		fields: []guidedSecretField{
+			{name: "companyDomain", label: "Company domain", placeholder: "acme"},
+			{name: "apiKey", label: "API key", placeholder: "paste API key", secret: true},
+		},
+	},
+	"github": {
+		label: "GitHub",
+		fields: []guidedSecretField{
+			{name: "org", label: "Organization", placeholder: "acme"},
+			{name: "token", label: "Access token", placeholder: "paste token", secret: true},
+		},
+	},
+	"google": {
+		label: "Google Workspace",
+		fields: []guidedSecretField{
+			{name: "clientEmail", label: "Service-account client email", placeholder: "beacon@project.iam.gserviceaccount.com"},
+			{name: "adminEmail", label: "Delegated administrator email", placeholder: "admin@example.com"},
+			{name: "privateKey", label: "Private key (use \\n for line breaks)", placeholder: "-----BEGIN PRIVATE KEY-----\\n…", secret: true},
+		},
+	},
+	"slack": {
+		label: "Slack",
+		fields: []guidedSecretField{
+			{name: "userToken", label: "User OAuth token", placeholder: "xoxp-…", secret: true},
+		},
+	},
+	"zoom": {
+		label: "Zoom",
+		fields: []guidedSecretField{
+			{name: "accountId", label: "Account ID", placeholder: "paste account ID"},
+			{name: "clientId", label: "Client ID", placeholder: "paste client ID"},
+			{name: "clientSecret", label: "Client secret", placeholder: "paste client secret", secret: true},
+		},
+	},
+}
+
+func GuidedIntegrationNames() []string {
+	names := make([]string, 0, len(guidedSecretSpecs))
+	for name := range guidedSecretSpecs {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+func GuidedSecretFieldNames(integration string) []string {
+	spec, ok := guidedSecretSpecs[integration]
+	if !ok {
+		return nil
+	}
+	names := make([]string, len(spec.fields))
+	for index, field := range spec.fields {
+		names[index] = field.name
+	}
+	return names
+}
+
 func Secret() (SecretResult, bool, error) {
 	labels := []string{"Integration", "Secret name", "Secret value"}
 	placeholders := []string{"github", "token", "paste secret"}
@@ -123,7 +201,11 @@ func Secret() (SecretResult, bool, error) {
 		inputs[index] = input
 	}
 	inputs[0].Focus()
-	result, err := tea.NewProgram(secretModel{inputs: inputs}, tea.WithAltScreen()).Run()
+	result, err := tea.NewProgram(secretModel{
+		inputs:      inputs,
+		title:       "Store integration secret",
+		description: "The value is masked and encrypted locally before it is written.",
+	}, tea.WithAltScreen()).Run()
 	if err != nil {
 		return SecretResult{}, false, err
 	}
@@ -138,11 +220,56 @@ func Secret() (SecretResult, bool, error) {
 	}, true, nil
 }
 
+func GuidedSecrets(integration string) (GuidedSecretResult, bool, error) {
+	integration = strings.ToLower(strings.TrimSpace(integration))
+	spec, ok := guidedSecretSpecs[integration]
+	if !ok {
+		return GuidedSecretResult{}, false, fmt.Errorf(
+			"guided setup is unavailable for %q; choose one of: %s",
+			integration,
+			strings.Join(GuidedIntegrationNames(), ", "),
+		)
+	}
+	inputs := make([]textinput.Model, len(spec.fields))
+	for index, field := range spec.fields {
+		input := textinput.New()
+		input.Prompt = field.label + "\n  "
+		input.Placeholder = field.placeholder
+		input.CharLimit = 262144
+		input.Width = 76
+		if field.secret {
+			input.EchoMode = textinput.EchoPassword
+			input.EchoCharacter = '•'
+		}
+		inputs[index] = input
+	}
+	inputs[0].Focus()
+	result, err := tea.NewProgram(secretModel{
+		inputs:      inputs,
+		title:       "Configure " + spec.label,
+		description: "All required values are saved together in the encrypted local vault.",
+	}, tea.WithAltScreen()).Run()
+	if err != nil {
+		return GuidedSecretResult{}, false, err
+	}
+	final := result.(secretModel)
+	if final.cancelled || !final.done {
+		return GuidedSecretResult{}, false, nil
+	}
+	values := make(map[string]string, len(spec.fields))
+	for index, field := range spec.fields {
+		values[field.name] = strings.TrimSpace(final.inputs[index].Value())
+	}
+	return GuidedSecretResult{Integration: integration, Values: values}, true, nil
+}
+
 type secretModel struct {
-	inputs    []textinput.Model
-	focus     int
-	cancelled bool
-	done      bool
+	inputs      []textinput.Model
+	title       string
+	description string
+	focus       int
+	cancelled   bool
+	done        bool
 }
 
 func (m secretModel) Init() tea.Cmd { return textinput.Blink }
@@ -181,8 +308,8 @@ func (m secretModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m secretModel) View() string {
-	view := brand.Render("◆") + "  " + title.Render("Store integration secret") + "\n"
-	view += mutedStyle.Render("The value is masked and encrypted locally before it is written.") + "\n\n"
+	view := brand.Render("◆") + "  " + title.Render(m.title) + "\n"
+	view += mutedStyle.Render(m.description) + "\n\n"
 	for index := range m.inputs {
 		view += m.inputs[index].View() + "\n\n"
 	}

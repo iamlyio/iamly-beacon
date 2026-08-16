@@ -1,9 +1,10 @@
 FROM golang:1.25.13-alpine AS build
+ARG VERSION=1.0.0
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/beacon ./cmd/beacon
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=v${VERSION}" -o /out/beacon ./cmd/beacon
 
 FROM gcr.io/distroless/static-debian12:nonroot
 COPY --from=build /out/beacon /usr/local/bin/beacon

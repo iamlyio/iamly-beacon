@@ -91,7 +91,7 @@ func (a *App) Execute(ctx context.Context, arguments []string) error {
 		}
 		switch arguments[1] {
 		case "set":
-			return a.storeSecret(ctx)
+			return a.storeSecret(ctx, arguments[2:])
 		case "import":
 			return a.importSecrets(ctx, arguments[2:])
 		case "list":
@@ -119,7 +119,7 @@ func (a *App) execute(ctx context.Context, action tui.Action) error {
 	case tui.Configure:
 		return a.configure(ctx, nil)
 	case tui.Secrets:
-		return a.storeSecret(ctx)
+		return a.storeSecret(ctx, nil)
 	case tui.Status:
 		return a.status(ctx)
 	case tui.Run:
@@ -129,34 +129,68 @@ func (a *App) execute(ctx context.Context, action tui.Action) error {
 	}
 }
 
-func (a *App) storeSecret(ctx context.Context) error {
+func (a *App) storeSecret(ctx context.Context, arguments []string) error {
+	if len(arguments) > 1 {
+		return errors.New("use beacon secret set [integration]")
+	}
 	metadata, data, kms, err := a.openVault(ctx)
 	if err != nil {
 		return err
 	}
 	defer kms.Close()
 
-	secret, saved, err := tui.Secret()
-	if err != nil || !saved {
-		return err
+	integration := ""
+	values := map[string]string{}
+	if len(arguments) == 1 {
+		guided, saved, promptErr := tui.GuidedSecrets(arguments[0])
+		if promptErr != nil || !saved {
+			return promptErr
+		}
+		integration = guided.Integration
+		values = guided.Values
+	} else {
+		secret, saved, promptErr := tui.Secret()
+		if promptErr != nil || !saved {
+			return promptErr
+		}
+		integration = secret.Integration
+		values[secret.Name] = secret.Value
 	}
-	if !integrationNamePattern.MatchString(secret.Integration) || !credentialNamePattern.MatchString(secret.Name) {
-		return errors.New("integration names must be lowercase; credential names may also use uppercase letters")
+	if !integrationNamePattern.MatchString(integration) {
+		return errors.New("integration names must be lowercase")
 	}
-	if secret.Value == "" {
-		return errors.New("secret value is required")
+	for name, value := range values {
+		if !credentialNamePattern.MatchString(name) {
+			return errors.New("credential names must begin with a letter and contain only letters, numbers, underscores, or hyphens")
+		}
+		if value == "" {
+			return fmt.Errorf("%s.%s is required", integration, name)
+		}
+	}
+	if integration == "bamboohr" {
+		if validationErr := collector.ValidateBambooHRCredentials(values); validationErr != nil {
+			return validationErr
+		}
 	}
 	if data.Integrations == nil {
 		data.Integrations = make(map[string]map[string]string)
 	}
-	if data.Integrations[secret.Integration] == nil {
-		data.Integrations[secret.Integration] = make(map[string]string)
+	if data.Integrations[integration] == nil {
+		data.Integrations[integration] = make(map[string]string)
 	}
-	data.Integrations[secret.Integration][secret.Name] = secret.Value
+	for name, value := range values {
+		data.Integrations[integration][name] = value
+	}
 	if err := vault.NewStore(a.paths.Vault, metadata.KeyName, kms).Save(ctx, data); err != nil {
 		return err
 	}
-	fmt.Fprintf(a.output(), "✓ Stored %s.%s in the encrypted local vault\n", secret.Integration, secret.Name)
+	if len(arguments) == 1 {
+		fmt.Fprintf(a.output(), "✓ Configured %s with %d encrypted values in the local vault\n", integration, len(values))
+	} else {
+		for name := range values {
+			fmt.Fprintf(a.output(), "✓ Stored %s.%s in the encrypted local vault\n", integration, name)
+		}
+	}
 	return nil
 }
 
@@ -650,7 +684,8 @@ Usage:
   beacon configure       Configure and enroll interactively
   beacon configure --kms-key KEY --control-plane URL --name NAME [--enrollment-token-stdin]
                          Configure noninteractively; read a one-time token only from stdin
-  beacon secret set      Enter and encrypt an integration secret
+  beacon secret set [integration]
+                         Configure one supported integration through guided prompts
   beacon secret import --stdin
                          Import a versioned JSON credential bundle only from stdin
   beacon secret list     List secret names without revealing their values

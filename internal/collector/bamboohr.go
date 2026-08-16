@@ -14,7 +14,10 @@ import (
 	"github.com/iamlyio/iamly-beacon/internal/protocol"
 )
 
-var bambooHRCompanyDomain = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$`)
+var (
+	bambooHRCompanyDomain = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$`)
+	bambooHRAPIKey        = regexp.MustCompile(`^[0-9a-fA-F]{40}$`)
+)
 
 type bambooHREmployee struct {
 	EmployeeID  string   `json:"employeeId"`
@@ -55,17 +58,30 @@ func bambooHRRole(employee bambooHREmployee) string {
 	return "employee"
 }
 
+// ValidateBambooHRCredentials checks the values before they are persisted by
+// guided setup and before a collection request is sent.
+func ValidateBambooHRCredentials(credentials map[string]string) error {
+	if err := require(credentials, "companyDomain", "apiKey"); err != nil {
+		return err
+	}
+	companyDomain := strings.ToLower(strings.TrimSpace(credentials["companyDomain"]))
+	if !bambooHRCompanyDomain.MatchString(companyDomain) {
+		return errors.New("BambooHR company domain is invalid; enter only the subdomain, for example acme")
+	}
+	if !bambooHRAPIKey.MatchString(strings.TrimSpace(credentials["apiKey"])) {
+		return errors.New("BambooHR API key must be a 40-character hexadecimal user API key")
+	}
+	return nil
+}
+
 // BambooHR reads the complete employee roster rather than the optional company
 // directory. The directory excludes former employees and cannot be an
 // authoritative lifecycle source for access reviews.
 func BambooHR(ctx context.Context, credentials map[string]string) ([]protocol.Member, *protocol.Spend, error) {
-	if err := require(credentials, "companyDomain", "apiKey"); err != nil {
+	if err := ValidateBambooHRCredentials(credentials); err != nil {
 		return nil, nil, err
 	}
 	companyDomain := strings.ToLower(strings.TrimSpace(credentials["companyDomain"]))
-	if !bambooHRCompanyDomain.MatchString(companyDomain) {
-		return nil, nil, errors.New("BambooHR company domain is invalid")
-	}
 
 	members := make([]protocol.Member, 0)
 	cursor := ""
@@ -85,7 +101,7 @@ func BambooHR(ctx context.Context, credentials map[string]string) ([]protocol.Me
 		endpoint.RawQuery = query.Encode()
 
 		request, _ := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.String(), nil)
-		request.SetBasicAuth(credentials["apiKey"], "x")
+		request.SetBasicAuth(strings.TrimSpace(credentials["apiKey"]), "x")
 		request.Header.Set("Accept", "application/json")
 		response, err := doVendorRequest(ctx, request)
 		if err != nil {

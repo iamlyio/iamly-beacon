@@ -7,6 +7,8 @@ import (
 	"testing"
 )
 
+const testBambooHRAPIKey = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
 func TestBambooHRCollectsCompleteEmployeeLifecycle(t *testing.T) {
 	original := httpClient
 	t.Cleanup(func() { httpClient = original })
@@ -16,7 +18,7 @@ func TestBambooHRCollectsCompleteEmployeeLifecycle(t *testing.T) {
 		if request.URL.Host != "acme.bamboohr.com" || request.URL.Path != "/api/v1/employees" {
 			t.Fatalf("unexpected BambooHR endpoint %s", request.URL.String())
 		}
-		wantAuth := "Basic " + base64.StdEncoding.EncodeToString([]byte("secret-key:x"))
+		wantAuth := "Basic " + base64.StdEncoding.EncodeToString([]byte(testBambooHRAPIKey+":x"))
 		if request.Header.Get("Authorization") != wantAuth || request.Header.Get("Accept") != "application/json" {
 			t.Fatal("BambooHR authentication headers are invalid")
 		}
@@ -37,7 +39,7 @@ func TestBambooHRCollectsCompleteEmployeeLifecycle(t *testing.T) {
 	})}
 
 	members, spend, err := BambooHR(context.Background(), map[string]string{
-		"companyDomain": "Acme", "apiKey": "secret-key",
+		"companyDomain": "Acme", "apiKey": testBambooHRAPIKey,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -56,10 +58,19 @@ func TestBambooHRCollectsCompleteEmployeeLifecycle(t *testing.T) {
 
 func TestBambooHRRejectsUnsafeCompanyDomain(t *testing.T) {
 	_, _, err := BambooHR(context.Background(), map[string]string{
-		"companyDomain": "acme.example.com", "apiKey": "secret-key",
+		"companyDomain": "acme.example.com", "apiKey": testBambooHRAPIKey,
 	})
 	if err == nil {
 		t.Fatal("expected an invalid company domain error")
+	}
+}
+
+func TestBambooHRRejectsMalformedAPIKey(t *testing.T) {
+	err := ValidateBambooHRCredentials(map[string]string{
+		"companyDomain": "acme", "apiKey": "not-an-api-key",
+	})
+	if err == nil {
+		t.Fatal("expected an invalid API key error")
 	}
 }
 
@@ -71,7 +82,7 @@ func TestBambooHRRejectsRestrictedWorkEmailCoverage(t *testing.T) {
 	})}
 
 	_, _, err := BambooHR(context.Background(), map[string]string{
-		"companyDomain": "acme", "apiKey": "secret-key",
+		"companyDomain": "acme", "apiKey": testBambooHRAPIKey,
 	})
 	if err == nil {
 		t.Fatal("expected restricted work email coverage to fail")
@@ -86,7 +97,7 @@ func TestBambooHRRejectsRepeatedPaginationCursor(t *testing.T) {
 	})}
 
 	_, _, err := BambooHR(context.Background(), map[string]string{
-		"companyDomain": "acme", "apiKey": "secret-key",
+		"companyDomain": "acme", "apiKey": testBambooHRAPIKey,
 	})
 	if err != errRepeatedCursor {
 		t.Fatalf("error=%v, want repeated cursor", err)

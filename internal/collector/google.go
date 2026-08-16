@@ -23,11 +23,16 @@ import (
 
 const googleScope = "https://www.googleapis.com/auth/admin.directory.user.readonly"
 
+func normalizeGooglePrivateKey(value string) string {
+	return strings.ReplaceAll(value, `\n`, "\n")
+}
+
 func googleAccessToken(ctx context.Context, credentials map[string]string) (string, error) {
 	if err := require(credentials, "clientEmail", "privateKey", "adminEmail"); err != nil {
 		return "", err
 	}
-	block, _ := pem.Decode([]byte(credentials["privateKey"]))
+	privateKeyPEM := normalizeGooglePrivateKey(credentials["privateKey"])
+	block, _ := pem.Decode([]byte(privateKeyPEM))
 	if block == nil {
 		return "", errors.New("Google private key is not valid PEM")
 	}
