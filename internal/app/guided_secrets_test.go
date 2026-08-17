@@ -12,8 +12,12 @@ func TestEveryCollectorHasGuidedSecretSetup(t *testing.T) {
 	if len(guided) != len(collector.Supported) {
 		t.Fatalf("guided integrations = %v, supported collectors = %d", guided, len(collector.Supported))
 	}
+	available := make(map[string]bool, len(guided))
+	for _, integration := range guided {
+		available[integration] = true
+	}
 	for integration := range collector.Supported {
-		if fields := tui.GuidedSecretFieldNames(integration); len(fields) == 0 {
+		if !available[integration] {
 			t.Errorf("supported collector %q has no guided secret profile", integration)
 		}
 	}

@@ -17,14 +17,13 @@ func TestGuidedSecretProfiles(t *testing.T) {
 		t.Fatalf("guided integrations = %v", got)
 	}
 	for integration, fields := range want {
-		if got := GuidedSecretFieldNames(integration); !reflect.DeepEqual(got, fields) {
+		spec := guidedSecretSpecs[integration]
+		got := make([]string, len(spec.fields))
+		for index, field := range spec.fields {
+			got[index] = field.name
+		}
+		if !reflect.DeepEqual(got, fields) {
 			t.Errorf("%s fields = %v, want %v", integration, got, fields)
 		}
-	}
-}
-
-func TestUnknownGuidedSecretProfile(t *testing.T) {
-	if fields := GuidedSecretFieldNames("unknown"); fields != nil {
-		t.Fatalf("unknown fields = %v, want nil", fields)
 	}
 }

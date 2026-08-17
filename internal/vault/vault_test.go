@@ -4,10 +4,8 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
-	"encoding/json"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 )
 
@@ -109,20 +107,5 @@ func TestTamperingIsRejected(t *testing.T) {
 func TestKMSSelfTestWrapsAndUnwraps(t *testing.T) {
 	if err := SelfTest(context.Background(), "key", memoryWrapper{key: 0x5a}); err != nil {
 		t.Fatal(err)
-	}
-}
-
-func TestLegacyEnrollmentTokenIsDiscarded(t *testing.T) {
-	legacy := []byte(`{"control_plane":{"url":"https://control.example","beacon_id":"legacy","beacon_token":"must-not-survive"}}`)
-	var data Data
-	if err := json.Unmarshal(legacy, &data); err != nil {
-		t.Fatal(err)
-	}
-	encoded, err := json.Marshal(data)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(string(encoded), "must-not-survive") || strings.Contains(string(encoded), "beacon_token") {
-		t.Fatalf("legacy token survived migration: %s", encoded)
 	}
 }

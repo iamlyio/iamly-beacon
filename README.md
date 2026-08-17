@@ -21,7 +21,7 @@ version from `VERSION`; `make build` stamps that value into `beacon version`.
 ## Current foundation
 
 - Interactive terminal interface built with Bubble Tea.
-- `configure`, `status`, `run`, and `version` commands.
+- `configure`, `secret`, `status`, `run`, and `version` commands.
 - Masked in-TUI entry for integration credentials; secret values are never CLI arguments.
 - Local XChaCha20-Poly1305 vault using a new data key and nonce per write.
 - GCP Cloud KMS envelope encryption with CRC32C integrity validation.
@@ -216,7 +216,3 @@ After any `beacon secret set ...` command, restart this service to reload the
 vault and advertise the updated collector list.
 
 See [the architecture](docs/ARCHITECTURE.md) for the SaaS/Beacon trust boundary.
-
-## License
-
-No license has been selected yet. The distribution and licensing model should be chosen deliberately before publication.

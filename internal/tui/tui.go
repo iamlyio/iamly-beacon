@@ -172,18 +172,6 @@ func GuidedIntegrationNames() []string {
 	return names
 }
 
-func GuidedSecretFieldNames(integration string) []string {
-	spec, ok := guidedSecretSpecs[integration]
-	if !ok {
-		return nil
-	}
-	names := make([]string, len(spec.fields))
-	for index, field := range spec.fields {
-		names[index] = field.name
-	}
-	return names
-}
-
 func Secret() (SecretResult, bool, error) {
 	labels := []string{"Integration", "Secret name", "Secret value"}
 	placeholders := []string{"github", "token", "paste secret"}
@@ -267,6 +255,7 @@ type secretModel struct {
 	inputs      []textinput.Model
 	title       string
 	description string
+	action      string
 	focus       int
 	cancelled   bool
 	done        bool
@@ -313,23 +302,20 @@ func (m secretModel) View() string {
 	for index := range m.inputs {
 		view += m.inputs[index].View() + "\n\n"
 	}
-	view += active.Render("Enter") + " encrypt  •  " + mutedStyle.Render("tab next  •  esc cancel")
+	action := m.action
+	if action == "" {
+		action = "encrypt"
+	}
+	view += active.Render("Enter") + " " + action + "  •  " + mutedStyle.Render("tab next  •  esc cancel")
 	return panel.Width(86).Render(view)
-}
-
-type setupModel struct {
-	inputs    []textinput.Model
-	focus     int
-	cancelled bool
-	done      bool
 }
 
 func Setup(initial SetupResult) (SetupResult, bool, error) {
 	labels := []string{"GCP KMS CryptoKey resource", "iamly.io control-plane URL", "Beacon name", "Enrollment token"}
 	values := []string{initial.KeyName, initial.Data.ControlPlane.URL, initial.Data.ControlPlane.BeaconName, ""}
 	placeholders := []string{
-		"projects/acme/locations/global/keyRings/reviam/cryptoKeys/beacon-vault",
-		"https://iamly.io", "Production Beacon", "paste token from iamly.io (blank keeps current identity)",
+		"projects/acme/locations/global/keyRings/iamly/cryptoKeys/beacon-vault",
+		"https://beacon.iamly.io", "Production Beacon", "paste token from iamly.io (blank keeps current identity)",
 	}
 	inputs := make([]textinput.Model, len(labels))
 	for index := range labels {
@@ -346,12 +332,17 @@ func Setup(initial SetupResult) (SetupResult, bool, error) {
 		inputs[index] = input
 	}
 	inputs[0].Focus()
-	model := setupModel{inputs: inputs}
+	model := secretModel{
+		inputs:      inputs,
+		title:       "Configure Beacon",
+		description: "The vault is encrypted locally. GCP KMS only wraps its encryption key.",
+		action:      "configure",
+	}
 	result, err := tea.NewProgram(model, tea.WithAltScreen()).Run()
 	if err != nil {
 		return SetupResult{}, false, err
 	}
-	final := result.(setupModel)
+	final := result.(secretModel)
 	if final.cancelled || !final.done {
 		return SetupResult{}, false, nil
 	}
@@ -366,49 +357,4 @@ func Setup(initial SetupResult) (SetupResult, bool, error) {
 		Data:            data,
 		EnrollmentToken: strings.TrimSpace(final.inputs[3].Value()),
 	}, true, nil
-}
-
-func (m setupModel) Init() tea.Cmd { return textinput.Blink }
-
-func (m setupModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
-	if key, ok := message.(tea.KeyMsg); ok {
-		switch key.String() {
-		case "ctrl+c", "esc":
-			m.cancelled = true
-			return m, tea.Quit
-		case "tab", "shift+tab", "enter", "up", "down":
-			if key.String() == "enter" && m.focus == len(m.inputs)-1 {
-				m.done = true
-				return m, tea.Quit
-			}
-			m.inputs[m.focus].Blur()
-			if key.String() == "shift+tab" || key.String() == "up" {
-				m.focus--
-			} else {
-				m.focus++
-			}
-			if m.focus < 0 {
-				m.focus = len(m.inputs) - 1
-			}
-			if m.focus >= len(m.inputs) {
-				m.focus = 0
-			}
-			return m, m.inputs[m.focus].Focus()
-		}
-	}
-	commands := make([]tea.Cmd, len(m.inputs))
-	for index := range m.inputs {
-		m.inputs[index], commands[index] = m.inputs[index].Update(message)
-	}
-	return m, tea.Batch(commands...)
-}
-
-func (m setupModel) View() string {
-	view := brand.Render("◆") + "  " + title.Render("Configure Beacon") + "\n"
-	view += mutedStyle.Render("The vault is encrypted locally. GCP KMS only wraps its encryption key.") + "\n\n"
-	for index := range m.inputs {
-		view += m.inputs[index].View() + "\n\n"
-	}
-	view += active.Render("Enter") + " configure  •  " + mutedStyle.Render("tab next  •  esc cancel")
-	return panel.Width(86).Render(view)
 }
