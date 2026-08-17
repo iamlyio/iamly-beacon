@@ -23,7 +23,7 @@ import (
 	"github.com/iamlyio/iamly-beacon/internal/vault"
 )
 
-const testKeyName = "projects/acme/locations/global/keyRings/reviam/cryptoKeys/beacon"
+const testKeyName = "projects/acme/locations/global/keyRings/iamly/cryptoKeys/beacon"
 
 func TestExecuteBeaconJobUploadsConnectorFailureWithoutStoppingSuccessfulCollectors(t *testing.T) {
 	original := collector.Supported
@@ -376,7 +376,7 @@ func TestCredentialImportMergesAtomicallyWithoutRenderingValues(t *testing.T) {
 	const googleKey = "-----BEGIN PRIVATE KEY-----\nprivate-material\n-----END PRIVATE KEY-----"
 	payload, err := json.Marshal(credentialImport{Version: 1, Secrets: []credentialImportItem{
 		{Integration: "github", Name: "token", Value: githubToken},
-		{Integration: "github", Name: "org", Value: "reviam"},
+		{Integration: "github", Name: "org", Value: "iamly"},
 		{Integration: "google", Name: "privateKey", Value: googleKey},
 	}})
 	if err != nil {

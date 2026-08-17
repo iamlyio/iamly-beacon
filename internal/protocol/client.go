@@ -13,6 +13,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -21,6 +22,20 @@ const (
 	maxResponseBytes       = 1 << 20
 	resultUploadAttempts   = 3
 	resultUploadRetryDelay = 250 * time.Millisecond
+	maxControlPlaneError   = 64
+)
+
+var (
+	jobIDPattern             = regexp.MustCompile(`^job_[A-Za-z0-9_-]{22}$`)
+	leaseTokenPattern        = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
+	controlPlaneErrorPattern = regexp.MustCompile(`^[a-z][a-z0-9_]{0,63}$`)
+	supportedJobPlatforms    = map[string]struct{}{
+		"bamboohr": {},
+		"github":   {},
+		"google":   {},
+		"slack":    {},
+		"zoom":     {},
+	}
 )
 
 type Client struct {
@@ -92,6 +107,11 @@ func New(baseURL, beaconID, privateKeyText string) (Client, error) {
 	if err != nil || len(privateKey) != ed25519.PrivateKeySize {
 		return Client{}, errors.New("Beacon signing private key is invalid")
 	}
+	parsed, err := url.ParseRequestURI(baseURL)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" || parsed.User != nil ||
+		parsed.RawQuery != "" || parsed.Fragment != "" || (parsed.Path != "" && parsed.Path != "/") {
+		return Client{}, errors.New("Beacon control-plane URL must be an origin")
+	}
 	return Client{BaseURL: strings.TrimRight(baseURL, "/"), BeaconID: beaconID, PrivateKey: ed25519.PrivateKey(privateKey)}, nil
 }
 
@@ -119,14 +139,48 @@ func (c Client) Poll(ctx context.Context, integrations []string) (*Job, error) {
 		Job             Job `json:"job"`
 	}
 	if json.Unmarshal(response, &payload) != nil || payload.ProtocolVersion != 1 ||
-		payload.Job.ID == "" ||
-		((payload.Job.LeaseToken == "") != (payload.Job.ClaimGeneration == 0)) {
+		!validJob(payload.Job) {
 		return nil, errors.New("control plane returned an invalid job")
 	}
-	if len(payload.Job.PendingPlatforms) == 0 {
-		payload.Job.PendingPlatforms = payload.Job.Platforms
-	}
 	return &payload.Job, nil
+}
+
+func validJob(job Job) bool {
+	if !jobIDPattern.MatchString(job.ID) || job.ReviewRunID <= 0 ||
+		!leaseTokenPattern.MatchString(job.LeaseToken) || job.ClaimGeneration <= 0 {
+		return false
+	}
+	platforms, ok := validPlatformList(job.Platforms)
+	if !ok {
+		return false
+	}
+	pending, ok := validPlatformList(job.PendingPlatforms)
+	if !ok || len(pending) > len(platforms) {
+		return false
+	}
+	for platform := range pending {
+		if _, requested := platforms[platform]; !requested {
+			return false
+		}
+	}
+	return true
+}
+
+func validPlatformList(platforms []string) (map[string]struct{}, bool) {
+	if len(platforms) == 0 || len(platforms) > len(supportedJobPlatforms) {
+		return nil, false
+	}
+	unique := make(map[string]struct{}, len(platforms))
+	for _, platform := range platforms {
+		if _, supported := supportedJobPlatforms[platform]; !supported {
+			return nil, false
+		}
+		if _, duplicate := unique[platform]; duplicate {
+			return nil, false
+		}
+		unique[platform] = struct{}{}
+	}
+	return unique, true
 }
 
 func (c Client) Heartbeat(ctx context.Context, job Job) error {
@@ -190,7 +244,7 @@ func (c Client) request(ctx context.Context, path string, body []byte) ([]byte, 
 	nonce := base64.RawURLEncoding.EncodeToString(nonceBytes)
 	hash := sha256.Sum256(body)
 	message := strings.Join([]string{
-		"reviam-beacon-request-v1", http.MethodPost, path, c.BeaconID, timestamp,
+		"iamly-beacon-request-v1", http.MethodPost, path, c.BeaconID, timestamp,
 		nonce, base64.RawURLEncoding.EncodeToString(hash[:]),
 	}, "\n")
 	signature := ed25519.Sign(c.PrivateKey, []byte(message))
@@ -200,13 +254,17 @@ func (c Client) request(ctx context.Context, path string, body []byte) ([]byte, 
 	}
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("Accept", "application/json")
-	request.Header.Set("X-Reviam-Beacon", c.BeaconID)
-	request.Header.Set("X-Reviam-Timestamp", timestamp)
-	request.Header.Set("X-Reviam-Nonce", nonce)
-	request.Header.Set("X-Reviam-Signature", base64.RawURLEncoding.EncodeToString(signature))
-	client := c.HTTPClient
-	if client == nil {
-		client = &http.Client{Timeout: 30 * time.Second}
+	request.Header.Set("X-Iamly-Beacon", c.BeaconID)
+	request.Header.Set("X-Iamly-Timestamp", timestamp)
+	request.Header.Set("X-Iamly-Nonce", nonce)
+	request.Header.Set("X-Iamly-Signature", base64.RawURLEncoding.EncodeToString(signature))
+	client := &http.Client{Timeout: 30 * time.Second}
+	if c.HTTPClient != nil {
+		copy := *c.HTTPClient
+		client = &copy
+	}
+	client.CheckRedirect = func(_ *http.Request, _ []*http.Request) error {
+		return http.ErrUseLastResponse
 	}
 	response, err := client.Do(request)
 	if err != nil {
@@ -229,7 +287,9 @@ func responseError(status int, body []byte) error {
 		Error string `json:"error"`
 	}
 	if json.Unmarshal(body, &payload) == nil && payload.Error != "" {
-		return fmt.Errorf("control plane rejected request: %s", payload.Error)
+		if len(payload.Error) <= maxControlPlaneError && controlPlaneErrorPattern.MatchString(payload.Error) {
+			return fmt.Errorf("control plane rejected request: %s", payload.Error)
+		}
 	}
 	return fmt.Errorf("control plane rejected request with HTTP %d", status)
 }

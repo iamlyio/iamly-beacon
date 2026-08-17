@@ -509,16 +509,27 @@ func (a *App) executeBeaconJob(ctx context.Context, client protocol.Client, job 
 	jobCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	heartbeatDone := make(chan struct{})
+	errorsChannel := make(chan error, len(job.PendingPlatforms)+1)
 	go func() {
 		defer close(heartbeatDone)
 		ticker := time.NewTicker(15 * time.Second)
 		defer ticker.Stop()
+		consecutiveFailures := 0
 		for {
 			select {
 			case <-jobCtx.Done():
 				return
 			case <-ticker.C:
-				_ = client.Heartbeat(jobCtx, job)
+				if err := client.Heartbeat(jobCtx, job); err != nil {
+					consecutiveFailures++
+					if consecutiveFailures >= 3 {
+						errorsChannel <- fmt.Errorf("heartbeat lease: %w", err)
+						cancel()
+						return
+					}
+					continue
+				}
+				consecutiveFailures = 0
 			}
 		}
 	}()
@@ -529,7 +540,6 @@ func (a *App) executeBeaconJob(ctx context.Context, client protocol.Client, job 
 	fmt.Fprintf(a.output(), "Review job %s · collecting %d integrations\n", job.ID, len(platforms))
 	var wait sync.WaitGroup
 	var outputMutex sync.Mutex
-	errorsChannel := make(chan error, len(platforms))
 	for _, platform := range platforms {
 		platform := platform
 		wait.Add(1)
@@ -593,8 +603,8 @@ func validateSetup(result, initial tui.SetupResult, hasVault bool, version strin
 	if parsed.Scheme != "https" && parsed.Hostname() != "localhost" && parsed.Hostname() != "127.0.0.1" {
 		return errors.New("iamly.io control-plane URL must use HTTPS")
 	}
-	if parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
-		return errors.New("iamly.io control-plane URL must not contain credentials, a query, or a fragment")
+	if parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" || (parsed.Path != "" && parsed.Path != "/") {
+		return errors.New("iamly.io control-plane URL must be an origin without credentials, a path, query, or fragment")
 	}
 	name := strings.TrimSpace(result.Data.ControlPlane.BeaconName)
 	if name == "" || len(name) > 80 || strings.IndexFunc(name, func(character rune) bool {

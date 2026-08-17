@@ -137,7 +137,7 @@ func (s *Store) Load(ctx context.Context) (Data, error) {
 }
 
 func authenticatedMetadata(version int, provider, keyName string) []byte {
-	return []byte(fmt.Sprintf("reviam-beacon-vault:%d:%s:%s", version, provider, keyName))
+	return []byte(fmt.Sprintf("iamly-beacon-vault:%d:%s:%s", version, provider, keyName))
 }
 
 func atomicWrite(path string, blob []byte) error {

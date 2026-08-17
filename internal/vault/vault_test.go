@@ -25,10 +25,10 @@ func (m memoryWrapper) Unwrap(ctx context.Context, keyName string, ciphertext []
 
 func TestVaultRoundTripAndPermissions(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "vault.bin")
-	store := NewStore(path, "projects/acme/locations/global/keyRings/reviam/cryptoKeys/beacon", memoryWrapper{key: 0x5a})
+	store := NewStore(path, "projects/acme/locations/global/keyRings/iamly/cryptoKeys/beacon", memoryWrapper{key: 0x5a})
 	want := Data{
 		ControlPlane: ControlPlane{
-			URL:               "https://app.reviam.example",
+			URL:               "https://app.iamly.example",
 			BeaconID:          "beacon_01",
 			BeaconName:        "Production",
 			SigningPrivateKey: "private-signing-key",
