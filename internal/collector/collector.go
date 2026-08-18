@@ -17,11 +17,22 @@ import (
 type Collector func(context.Context, map[string]string) ([]protocol.Member, *protocol.Spend, error)
 
 var Supported = map[string]Collector{
-	"bamboohr": BambooHR,
-	"google":   Google,
-	"github":   GitHub,
-	"slack":    Slack,
-	"zoom":     Zoom,
+	"anthropic": Anthropic,
+	"asana":     Asana,
+	"bamboohr":  BambooHR,
+	"canva":     Canva,
+	"figma":     Figma,
+	"gcp":       GCP,
+	"github":    GitHub,
+	"google":    Google,
+	"linear":    Linear,
+	"notion":    Notion,
+	"openai":    OpenAI,
+	"slack":     Slack,
+	"tailscale": Tailscale,
+	"twingate":  Twingate,
+	"vercel":    Vercel,
+	"zoom":      Zoom,
 }
 
 var httpClient = &http.Client{Timeout: 40 * time.Second}

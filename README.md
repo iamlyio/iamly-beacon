@@ -33,7 +33,8 @@ version from `VERSION`; `make build` stamps that value into `beacon version`.
 - Signed, nonce-protected outbound review-job polling with concurrent per-app uploads.
 - Bounded transient retries for vendor APIs and idempotent result uploads; expired jobs resume with only their missing applications.
 - Strict vendor-response size and pagination limits; redirects are refused so local authorization headers cannot cross request boundaries.
-- Local BambooHR, Google Workspace, GitHub, Slack, and Zoom account collectors.
+- Sixteen local, read-only account collectors spanning HR, identity, cloud,
+  developer, collaboration, network, and AI platforms.
 - GitHub deploy-key inventory across accessible organization repositories; only non-secret metadata is uploaded, never key material.
 - GitHub current-month net billing usage, normalized as USD spend when the organization billing API is available.
 - Unit tests for enrollment, request signing, encryption, permissions, freshness, and tamper detection.
@@ -56,18 +57,34 @@ version from `VERSION`; `make build` stamps that value into `beacon version`.
 | --- | --- | --- |
 | BambooHR | `bamboohr.companyDomain`, `bamboohr.apiKey` | Complete employee roster, active/inactive lifecycle, work email, job title, department, hire date |
 | Google Workspace | `google.clientEmail`, `google.privateKey`, `google.adminEmail` | Directory identities, status, administrator role, creation time, last login |
+| GCP | `gcp.clientEmail`, `gcp.resourceScope`, `gcp.privateKey` | Direct IAM users and service accounts, lifecycle, and granted roles in one project, folder, or organization |
 | GitHub | `github.token`, `github.org` | Members, outside collaborators, roles, public profile enrichment, deploy keys, available billing usage |
 | Slack | `slack.userToken` | Members, guest types, status, last-seen activity, billable-seat facts |
+| Tailscale | `tailscale.clientId`, `tailscale.clientSecret` | Tailnet users, roles, lifecycle status, and activity |
+| Twingate | `twingate.network`, `twingate.apiToken` | Network users, roles, types, and lifecycle status |
+| Notion | `notion.token` | Workspace people and bots visible to an internal integration |
 | Zoom | `zoom.accountId`, `zoom.clientId`, `zoom.clientSecret` | Active, inactive, and pending users, roles, license type, last login |
+| Figma | `figma.token`, `figma.tenantId` | SCIM-provisioned users, lifecycle, administrator flag, and seat type |
+| OpenAI | `openai.adminApiKey` | API Platform organization users and roles |
+| Anthropic | `anthropic.adminApiKey` | Console organization users and roles |
+| Linear | `linear.apiKey` | Active and disabled workspace users, roles, and activity |
+| Vercel | `vercel.token`, `vercel.teamId` | Team members, roles, and pending email invitations |
+| Asana | `asana.token`, `asana.workspaceGid` | Users visible in one workspace or organization |
+| Canva | `canva.token` | SCIM-managed team users and lifecycle status |
 
 Each supported collector has guided credential setup:
 
 ```sh
 beacon secret set bamboohr
+beacon secret set gcp
 beacon secret set github
 beacon secret set google
+beacon secret set notion
 beacon secret set slack
+beacon secret set tailscale
+beacon secret set twingate
 beacon secret set zoom
+# Also: anthropic, asana, canva, figma, linear, openai, and vercel
 ```
 
 Beacon prompts for every required value, masks tokens and private keys, and
@@ -193,7 +210,7 @@ beacon configure       Configure GCP KMS and enroll through the interactive TUI
 beacon configure --kms-key KEY --control-plane URL --name NAME --enrollment-token-stdin
                        Configure noninteractively, reading the one-time token from stdin
 beacon secret set [integration]
-                       Guided setup for bamboohr, github, google, slack, or zoom;
+                       Guided setup for any supported collector;
                        omit integration for generic single-secret entry
 beacon secret import --stdin
                        Atomically import a bounded versioned credential bundle from a pipe

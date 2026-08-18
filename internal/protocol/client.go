@@ -31,11 +31,22 @@ var (
 	controlPlaneErrorPattern = regexp.MustCompile(`^[a-z][a-z0-9_]{0,63}$`)
 	beaconIDPattern          = regexp.MustCompile(`^bcn_[A-Za-z0-9_-]{22}$`)
 	supportedJobPlatforms    = map[string]struct{}{
-		"bamboohr": {},
-		"github":   {},
-		"google":   {},
-		"slack":    {},
-		"zoom":     {},
+		"anthropic": {},
+		"asana":     {},
+		"bamboohr":  {},
+		"canva":     {},
+		"figma":     {},
+		"gcp":       {},
+		"github":    {},
+		"google":    {},
+		"linear":    {},
+		"notion":    {},
+		"openai":    {},
+		"slack":     {},
+		"tailscale": {},
+		"twingate":  {},
+		"vercel":    {},
+		"zoom":      {},
 	}
 )
 

@@ -7,13 +7,24 @@ import (
 
 func TestGuidedSecretProfiles(t *testing.T) {
 	want := map[string][]string{
-		"bamboohr": {"companyDomain", "apiKey"},
-		"github":   {"org", "token"},
-		"google":   {"clientEmail", "adminEmail", "privateKey"},
-		"slack":    {"userToken"},
-		"zoom":     {"accountId", "clientId", "clientSecret"},
+		"anthropic": {"adminApiKey"},
+		"asana":     {"token", "workspaceGid"},
+		"bamboohr":  {"companyDomain", "apiKey"},
+		"canva":     {"token"},
+		"figma":     {"token", "tenantId"},
+		"gcp":       {"clientEmail", "resourceScope", "privateKey"},
+		"github":    {"org", "token"},
+		"google":    {"clientEmail", "adminEmail", "privateKey"},
+		"linear":    {"apiKey"},
+		"notion":    {"token"},
+		"openai":    {"adminApiKey"},
+		"slack":     {"userToken"},
+		"tailscale": {"clientId", "clientSecret"},
+		"twingate":  {"network", "apiToken"},
+		"vercel":    {"token", "teamId"},
+		"zoom":      {"accountId", "clientId", "clientSecret"},
 	}
-	if got := GuidedIntegrationNames(); !reflect.DeepEqual(got, []string{"bamboohr", "github", "google", "slack", "zoom"}) {
+	if got := GuidedIntegrationNames(); !reflect.DeepEqual(got, []string{"anthropic", "asana", "bamboohr", "canva", "figma", "gcp", "github", "google", "linear", "notion", "openai", "slack", "tailscale", "twingate", "vercel", "zoom"}) {
 		t.Fatalf("guided integrations = %v", got)
 	}
 	for integration, fields := range want {

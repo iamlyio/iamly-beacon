@@ -125,11 +125,45 @@ type guidedSecretSpec struct {
 }
 
 var guidedSecretSpecs = map[string]guidedSecretSpec{
+	"anthropic": {
+		label: "Anthropic Console",
+		fields: []guidedSecretField{
+			{name: "adminApiKey", label: "Admin API key", placeholder: "sk-ant-admin…", secret: true},
+		},
+	},
+	"asana": {
+		label: "Asana",
+		fields: []guidedSecretField{
+			{name: "token", label: "Personal access token", placeholder: "paste token", secret: true},
+			{name: "workspaceGid", label: "Workspace ID", placeholder: "1234567890"},
+		},
+	},
 	"bamboohr": {
 		label: "BambooHR",
 		fields: []guidedSecretField{
 			{name: "companyDomain", label: "Company domain", placeholder: "acme"},
 			{name: "apiKey", label: "API key", placeholder: "paste API key", secret: true},
+		},
+	},
+	"canva": {
+		label: "Canva",
+		fields: []guidedSecretField{
+			{name: "token", label: "SCIM token", placeholder: "paste SCIM token", secret: true},
+		},
+	},
+	"figma": {
+		label: "Figma",
+		fields: []guidedSecretField{
+			{name: "token", label: "SCIM API token", placeholder: "paste SCIM token", secret: true},
+			{name: "tenantId", label: "SCIM tenant ID", placeholder: "1234567890"},
+		},
+	},
+	"gcp": {
+		label: "Google Cloud Platform",
+		fields: []guidedSecretField{
+			{name: "clientEmail", label: "Service-account client email", placeholder: "beacon@project.iam.gserviceaccount.com"},
+			{name: "resourceScope", label: "Resource scope", placeholder: "organizations/123456789"},
+			{name: "privateKey", label: "Private key (use \\n for line breaks)", placeholder: "-----BEGIN PRIVATE KEY-----\\n…", secret: true},
 		},
 	},
 	"github": {
@@ -147,10 +181,49 @@ var guidedSecretSpecs = map[string]guidedSecretSpec{
 			{name: "privateKey", label: "Private key (use \\n for line breaks)", placeholder: "-----BEGIN PRIVATE KEY-----\\n…", secret: true},
 		},
 	},
+	"linear": {
+		label: "Linear",
+		fields: []guidedSecretField{
+			{name: "apiKey", label: "Personal API key", placeholder: "lin_api_…", secret: true},
+		},
+	},
+	"notion": {
+		label: "Notion",
+		fields: []guidedSecretField{
+			{name: "token", label: "Internal integration token", placeholder: "ntn_…", secret: true},
+		},
+	},
+	"openai": {
+		label: "OpenAI API Platform",
+		fields: []guidedSecretField{
+			{name: "adminApiKey", label: "Admin API key", placeholder: "sk-admin-…", secret: true},
+		},
+	},
 	"slack": {
 		label: "Slack",
 		fields: []guidedSecretField{
 			{name: "userToken", label: "User OAuth token", placeholder: "xoxp-…", secret: true},
+		},
+	},
+	"tailscale": {
+		label: "Tailscale",
+		fields: []guidedSecretField{
+			{name: "clientId", label: "OAuth client ID", placeholder: "paste client ID"},
+			{name: "clientSecret", label: "OAuth client secret", placeholder: "tskey-client-…", secret: true},
+		},
+	},
+	"twingate": {
+		label: "Twingate",
+		fields: []guidedSecretField{
+			{name: "network", label: "Network subdomain", placeholder: "acme"},
+			{name: "apiToken", label: "API token", placeholder: "paste API token", secret: true},
+		},
+	},
+	"vercel": {
+		label: "Vercel",
+		fields: []guidedSecretField{
+			{name: "token", label: "Access token", placeholder: "paste token", secret: true},
+			{name: "teamId", label: "Team ID", placeholder: "team_…"},
 		},
 	},
 	"zoom": {

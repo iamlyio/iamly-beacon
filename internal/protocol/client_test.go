@@ -134,14 +134,14 @@ func TestJobValidationRejectsUnboundedOrUntrustedControlPlaneInput(t *testing.T)
 		},
 		"invalid lease UUID": func(job *Job) { job.LeaseToken = "lease-123" },
 		"empty platforms":    func(job *Job) { job.Platforms = nil },
-		"unknown platform":   func(job *Job) { job.Platforms = []string{"notion"} },
+		"unknown platform":   func(job *Job) { job.Platforms = []string{"dropbox"} },
 		"duplicate platform": func(job *Job) { job.Platforms = []string{"github", "github"} },
 		"too many platforms": func(job *Job) {
-			job.Platforms = []string{"bamboohr", "github", "google", "slack", "zoom", "github"}
+			job.Platforms = []string{"anthropic", "asana", "bamboohr", "canva", "figma", "gcp", "github", "google", "linear", "notion", "openai", "slack", "tailscale", "twingate", "vercel", "zoom", "github"}
 		},
 		"empty pending platforms": func(job *Job) { job.PendingPlatforms = nil },
 		"unknown pending platform": func(job *Job) {
-			job.PendingPlatforms = []string{"notion"}
+			job.PendingPlatforms = []string{"dropbox"}
 		},
 		"duplicate pending platform": func(job *Job) {
 			job.PendingPlatforms = []string{"github", "github"}
