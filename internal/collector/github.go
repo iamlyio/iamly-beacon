@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"math"
 	"net/http"
 	"net/url"
@@ -57,7 +56,7 @@ func githubTokenOwnerEmail(ctx context.Context, token string) (string, string, b
 	var profile struct {
 		Login string `json:"login"`
 	}
-	profileErr := json.NewDecoder(io.LimitReader(profileResponse.Body, 1<<20)).Decode(&profile)
+	profileErr := decodeVendorJSON(profileResponse.Body, 1<<20, &profile)
 	profileStatus := profileResponse.StatusCode
 	profileResponse.Body.Close()
 	if !successful(profileStatus) || profileErr != nil || profile.Login == "" {
@@ -73,7 +72,7 @@ func githubTokenOwnerEmail(ctx context.Context, token string) (string, string, b
 		Primary  bool   `json:"primary"`
 		Verified bool   `json:"verified"`
 	}
-	emailErr := json.NewDecoder(io.LimitReader(emailResponse.Body, 1<<20)).Decode(&emails)
+	emailErr := decodeVendorJSON(emailResponse.Body, 1<<20, &emails)
 	emailStatus := emailResponse.StatusCode
 	emailResponse.Body.Close()
 	if !successful(emailStatus) || emailErr != nil {
@@ -106,7 +105,7 @@ func githubBillingSpend(ctx context.Context, token, org string) *protocol.Spend 
 		return nil
 	}
 	var payload githubBillingSummary
-	if json.NewDecoder(io.LimitReader(response.Body, 16<<20)).Decode(&payload) != nil {
+	if decodeVendorJSON(response.Body, 16<<20, &payload) != nil {
 		return nil
 	}
 	total := 0.0
@@ -148,7 +147,7 @@ func GitHubDeployKeys(ctx context.Context, credentials map[string]string) ([]pro
 	}
 	org := url.PathEscape(credentials["org"])
 	repositories := make([]githubRepository, 0)
-	for page := 1; ; page++ {
+	for page := 1; page <= maxVendorPages; page++ {
 		endpoint := "https://api.github.com/orgs/" + org + "/repos?type=all&per_page=100&page=" + strconv.Itoa(page)
 		response, err := githubRequest(ctx, credentials["token"], endpoint)
 		if err != nil {
@@ -157,7 +156,7 @@ func GitHubDeployKeys(ctx context.Context, credentials map[string]string) ([]pro
 			return nil, coverage
 		}
 		var payload []githubRepository
-		decodeErr := json.NewDecoder(io.LimitReader(response.Body, 16<<20)).Decode(&payload)
+		decodeErr := decodeVendorJSON(response.Body, 16<<20, &payload)
 		status := response.StatusCode
 		response.Body.Close()
 		if !successful(status) {
@@ -173,6 +172,11 @@ func GitHubDeployKeys(ctx context.Context, credentials map[string]string) ([]pro
 		repositories = append(repositories, payload...)
 		if len(payload) < 100 {
 			break
+		}
+		if page == maxVendorPages {
+			message := "GitHub repository inventory exceeded the pagination safety limit"
+			coverage.Message = &message
+			return nil, coverage
 		}
 	}
 	coverage.ResourcesTotal = len(repositories)
@@ -199,7 +203,7 @@ func GitHubDeployKeys(ctx context.Context, credentials map[string]string) ([]pro
 				}
 				found := make([]protocol.DeployKey, 0)
 				scanned := true
-				for page := 1; ; page++ {
+				for page := 1; page <= maxVendorPages; page++ {
 					endpoint := "https://api.github.com/repos/" + org + "/" + url.PathEscape(repository.Name) + "/keys?per_page=100&page=" + strconv.Itoa(page)
 					response, err := githubRequest(ctx, credentials["token"], endpoint)
 					if err != nil {
@@ -207,7 +211,7 @@ func GitHubDeployKeys(ctx context.Context, credentials map[string]string) ([]pro
 						break
 					}
 					var payload []githubDeployKey
-					decodeErr := json.NewDecoder(io.LimitReader(response.Body, 16<<20)).Decode(&payload)
+					decodeErr := decodeVendorJSON(response.Body, 16<<20, &payload)
 					status := response.StatusCode
 					response.Body.Close()
 					if !successful(status) || decodeErr != nil {
@@ -229,6 +233,10 @@ func GitHubDeployKeys(ctx context.Context, credentials map[string]string) ([]pro
 						})
 					}
 					if len(payload) < 100 {
+						break
+					}
+					if page == maxVendorPages {
+						scanned = false
 						break
 					}
 				}
@@ -279,7 +287,7 @@ func GitHub(ctx context.Context, credentials map[string]string) ([]protocol.Memb
 	org := url.PathEscape(credentials["org"])
 	var members []protocol.Member
 	collect := func(path, role string) error {
-		for page := 1; ; page++ {
+		for page := 1; page <= maxVendorPages; page++ {
 			separator := "?"
 			if containsQuestion(path) {
 				separator = "&"
@@ -293,7 +301,7 @@ func GitHub(ctx context.Context, credentials map[string]string) ([]protocol.Memb
 				ID    int64  `json:"id"`
 				Login string `json:"login"`
 			}
-			decodeErr := json.NewDecoder(io.LimitReader(response.Body, 16<<20)).Decode(&payload)
+			decodeErr := decodeVendorJSON(response.Body, 16<<20, &payload)
 			response.Body.Close()
 			if !successful(response.StatusCode) {
 				return responseError("GitHub", response)
@@ -308,7 +316,11 @@ func GitHub(ctx context.Context, credentials map[string]string) ([]protocol.Memb
 			if len(payload) < 100 {
 				return nil
 			}
+			if page == maxVendorPages {
+				return errPaginationLimit
+			}
 		}
+		return errPaginationLimit
 	}
 	if err := collect("members?role=admin", "owner"); err != nil {
 		return nil, nil, err
@@ -339,7 +351,7 @@ func GitHub(ctx context.Context, credentials map[string]string) ([]protocol.Memb
 					Name  string `json:"name"`
 					Email string `json:"email"`
 				}
-				decodeErr := json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&profile)
+				decodeErr := decodeVendorJSON(response.Body, 1<<20, &profile)
 				response.Body.Close()
 				if successful(response.StatusCode) && decodeErr == nil {
 					if profile.Name != "" {

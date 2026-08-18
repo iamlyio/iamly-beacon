@@ -2,10 +2,8 @@ package collector
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -86,7 +84,7 @@ func BambooHR(ctx context.Context, credentials map[string]string) ([]protocol.Me
 	members := make([]protocol.Member, 0)
 	cursor := ""
 	seen := map[string]bool{}
-	for {
+	for page := 1; page <= maxVendorPages; page++ {
 		endpoint := &url.URL{
 			Scheme: "https",
 			Host:   companyDomain + ".bamboohr.com",
@@ -115,7 +113,7 @@ func BambooHR(ctx context.Context, credentials map[string]string) ([]protocol.Me
 				} `json:"page"`
 			} `json:"meta"`
 		}
-		decodeErr := json.NewDecoder(io.LimitReader(response.Body, 32<<20)).Decode(&payload)
+		decodeErr := decodeVendorJSON(response.Body, 32<<20, &payload)
 		response.Body.Close()
 		if !successful(response.StatusCode) {
 			return nil, nil, responseError("BambooHR", response)
@@ -145,12 +143,12 @@ func BambooHR(ctx context.Context, credentials map[string]string) ([]protocol.Me
 		}
 		cursor = strings.TrimSpace(payload.Meta.Page.NextCursor)
 		if cursor == "" {
-			break
+			return members, nil, nil
 		}
 		if seen[cursor] {
 			return nil, nil, errRepeatedCursor
 		}
 		seen[cursor] = true
 	}
-	return members, nil, nil
+	return nil, nil, errPaginationLimit
 }

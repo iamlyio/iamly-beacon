@@ -94,7 +94,7 @@ func TestEnrollRetriesAmbiguousFailureWithExactSameIdentity(t *testing.T) {
 			return
 		}
 		writer.WriteHeader(http.StatusCreated)
-		_, _ = writer.Write([]byte(`{"beacon":{"id":"bcn_retry","name":"Production"},"protocolVersion":1}`))
+		_, _ = writer.Write([]byte(`{"beacon":{"id":"bcn_abcdefghijklmnopqrstuv","name":"Production"},"protocolVersion":1}`))
 	}))
 	defer server.Close()
 
@@ -102,7 +102,7 @@ func TestEnrollRetriesAmbiguousFailureWithExactSameIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.BeaconID != "bcn_retry" || len(bodies) != 2 {
+	if got.BeaconID != "bcn_abcdefghijklmnopqrstuv" || len(bodies) != 2 {
 		t.Fatalf("result=%#v attempts=%d", got, len(bodies))
 	}
 	if bodies[0]["token"] != bodies[1]["token"] || bodies[0]["publicKey"] != bodies[1]["publicKey"] {
@@ -124,7 +124,7 @@ func TestEnrollSendsContractAndReadsAssignedIdentity(t *testing.T) {
 		}
 		writer.Header().Set("Content-Type", "application/json")
 		writer.WriteHeader(http.StatusCreated)
-		_, _ = writer.Write([]byte(`{"beacon":{"id":"bcn_123","name":"Production","enrolledAt":"now"},"protocolVersion":1}`))
+		_, _ = writer.Write([]byte(`{"beacon":{"id":"bcn_abcdefghijklmnopqrstuv","name":"Production","enrolledAt":"now"},"protocolVersion":1}`))
 	}))
 	defer server.Close()
 
@@ -132,7 +132,7 @@ func TestEnrollSendsContractAndReadsAssignedIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.BeaconID != "bcn_123" || got.BeaconName != "Production" {
+	if got.BeaconID != "bcn_abcdefghijklmnopqrstuv" || got.BeaconName != "Production" {
 		t.Fatalf("result = %#v", got)
 	}
 }

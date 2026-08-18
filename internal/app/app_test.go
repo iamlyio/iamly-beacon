@@ -62,7 +62,7 @@ func TestExecuteBeaconJobUploadsConnectorFailureWithoutStoppingSuccessfulCollect
 	if err != nil {
 		t.Fatal(err)
 	}
-	client, err := protocol.New(server.URL, "bcn_test", identity.PrivateKey)
+	client, err := protocol.New(server.URL, "bcn_abcdefghijklmnopqrstuv", identity.PrivateKey)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -142,7 +142,7 @@ func TestExecuteBeaconJobUploadsEnrichedAppBeforeOtherConnectorsFinish(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	client, err := protocol.New(server.URL, "bcn_stream_test", identity.PrivateKey)
+	client, err := protocol.New(server.URL, "bcn_bcdefghijklmnopqrstuvw", identity.PrivateKey)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -220,7 +220,7 @@ func (e *testEnroller) Enroll(_ context.Context, controlPlane, token, name, publ
 		return enrollment.Result{}, errors.New("unexpected enrollment input")
 	}
 	e.kms.enrolled = true
-	return enrollment.Result{BeaconID: "bcn_assigned", BeaconName: "Production"}, nil
+	return enrollment.Result{BeaconID: "bcn_abcdefghijklmnopqrstuv", BeaconName: "Production"}, nil
 }
 
 func TestConfigureEnrollsAfterKMSSelfTestAndPersistsIdentityWithoutToken(t *testing.T) {
@@ -259,7 +259,7 @@ func TestConfigureEnrollsAfterKMSSelfTestAndPersistsIdentityWithoutToken(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	if data.ControlPlane.BeaconID != "bcn_assigned" || data.ControlPlane.BeaconName != "Production" ||
+	if data.ControlPlane.BeaconID != "bcn_abcdefghijklmnopqrstuv" || data.ControlPlane.BeaconName != "Production" ||
 		data.ControlPlane.SigningPrivateKey != identity.PrivateKey || data.ControlPlane.SigningPublicKey != identity.PublicKey {
 		t.Fatalf("stored identity = %#v", data.ControlPlane)
 	}
@@ -274,7 +274,7 @@ func TestConfigureWithBlankTokenRetainsExistingIdentity(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "vault.bin")
 	existing := vault.Data{ControlPlane: vault.ControlPlane{
 		URL:               "https://old.example",
-		BeaconID:          "bcn_existing",
+		BeaconID:          "bcn_bcdefghijklmnopqrstuvw",
 		BeaconName:        "Production",
 		SigningPrivateKey: identity.PrivateKey,
 		SigningPublicKey:  identity.PublicKey,

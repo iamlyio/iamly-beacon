@@ -29,6 +29,7 @@ var (
 	jobIDPattern             = regexp.MustCompile(`^job_[A-Za-z0-9_-]{22}$`)
 	leaseTokenPattern        = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
 	controlPlaneErrorPattern = regexp.MustCompile(`^[a-z][a-z0-9_]{0,63}$`)
+	beaconIDPattern          = regexp.MustCompile(`^bcn_[A-Za-z0-9_-]{22}$`)
 	supportedJobPlatforms    = map[string]struct{}{
 		"bamboohr": {},
 		"github":   {},
@@ -111,6 +112,13 @@ func New(baseURL, beaconID, privateKeyText string) (Client, error) {
 	if err != nil || parsed.Scheme == "" || parsed.Host == "" || parsed.User != nil ||
 		parsed.RawQuery != "" || parsed.Fragment != "" || (parsed.Path != "" && parsed.Path != "/") {
 		return Client{}, errors.New("Beacon control-plane URL must be an origin")
+	}
+	localHTTP := parsed.Scheme == "http" && (parsed.Hostname() == "localhost" || parsed.Hostname() == "127.0.0.1")
+	if parsed.Scheme != "https" && !localHTTP {
+		return Client{}, errors.New("Beacon control-plane URL must use HTTPS")
+	}
+	if !beaconIDPattern.MatchString(beaconID) {
+		return Client{}, errors.New("Beacon ID is invalid")
 	}
 	return Client{BaseURL: strings.TrimRight(baseURL, "/"), BeaconID: beaconID, PrivateKey: ed25519.PrivateKey(privateKey)}, nil
 }

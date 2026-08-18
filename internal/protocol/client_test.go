@@ -32,6 +32,27 @@ func TestNewRejectsControlPlanePathPrefixes(t *testing.T) {
 	}
 }
 
+func TestNewRequiresHTTPSAndCanonicalBeaconIdentity(t *testing.T) {
+	_, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded := base64.RawURLEncoding.EncodeToString(privateKey)
+	validID := "bcn_abcdefghijklmnopqrstuv"
+	if _, err := New("http://control.example", validID, encoded); err == nil {
+		t.Fatal("non-local HTTP control plane was accepted")
+	}
+	if _, err := New("http://localhost:3000", validID, encoded); err != nil {
+		t.Fatalf("local development control plane was rejected: %v", err)
+	}
+	if _, err := New("ftp://localhost:3000", validID, encoded); err == nil {
+		t.Fatal("non-HTTP localhost control plane was accepted")
+	}
+	if _, err := New("https://control.example", "bcn_invalid", encoded); err == nil {
+		t.Fatal("malformed Beacon ID was accepted")
+	}
+}
+
 func TestPollSignsTheExactRequestAndParsesAJob(t *testing.T) {
 	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {

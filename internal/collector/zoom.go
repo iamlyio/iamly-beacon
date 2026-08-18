@@ -3,10 +3,8 @@ package collector
 import (
 	"context"
 	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -36,7 +34,7 @@ func zoomAccessToken(ctx context.Context, credentials map[string]string) (string
 	var payload struct {
 		AccessToken string `json:"access_token"`
 	}
-	decodeErr := json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&payload)
+	decodeErr := decodeVendorJSON(response.Body, 1<<20, &payload)
 	if !successful(response.StatusCode) {
 		return "", responseError("Zoom", response)
 	}
@@ -67,7 +65,8 @@ func Zoom(ctx context.Context, credentials map[string]string) ([]protocol.Member
 	for _, requestedStatus := range statuses {
 		cursor := ""
 		seen := map[string]bool{}
-		for {
+		complete := false
+		for page := 1; page <= maxVendorPages; page++ {
 			endpoint, _ := url.Parse(zoomAPIBaseURL + "/users")
 			query := endpoint.Query()
 			query.Set("page_size", "300")
@@ -86,7 +85,7 @@ func Zoom(ctx context.Context, credentials map[string]string) ([]protocol.Member
 				Users []zoomUser `json:"users"`
 				Next  string     `json:"next_page_token"`
 			}
-			decodeErr := json.NewDecoder(io.LimitReader(response.Body, 32<<20)).Decode(&payload)
+			decodeErr := decodeVendorJSON(response.Body, 32<<20, &payload)
 			response.Body.Close()
 			if !successful(response.StatusCode) {
 				return nil, nil, responseError("Zoom", response)
@@ -119,6 +118,7 @@ func Zoom(ctx context.Context, credentials map[string]string) ([]protocol.Member
 				})
 			}
 			if payload.Next == "" {
+				complete = true
 				break
 			}
 			if seen[payload.Next] {
@@ -126,6 +126,9 @@ func Zoom(ctx context.Context, credentials map[string]string) ([]protocol.Member
 			}
 			seen[payload.Next] = true
 			cursor = payload.Next
+		}
+		if !complete {
+			return nil, nil, errPaginationLimit
 		}
 	}
 	return members, nil, nil

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"time"
@@ -66,14 +65,14 @@ func slackGet(ctx context.Context, token, endpoint string, output any) (string, 
 			Next string `json:"next_cursor"`
 		} `json:"response_metadata"`
 	}
-	if json.NewDecoder(io.LimitReader(response.Body, 32<<20)).Decode(&envelope) != nil {
+	if decodeVendorJSON(response.Body, 32<<20, &envelope) != nil {
 		return "", errors.New("Slack returned invalid JSON")
 	}
 	if !successful(response.StatusCode) {
 		return "", responseError("Slack", response)
 	}
 	if !envelope.OK {
-		return "", fmt.Errorf("Slack API error: %s", envelope.Error)
+		return "", vendorAPIError("Slack", envelope.Error)
 	}
 	var raw json.RawMessage
 	switch output.(type) {
@@ -103,7 +102,8 @@ func Slack(ctx context.Context, credentials map[string]string) ([]protocol.Membe
 	var users []slackUser
 	cursor := ""
 	seen := map[string]bool{}
-	for {
+	usersComplete := false
+	for page := 1; page <= maxVendorPages; page++ {
 		endpoint := "https://slack.com/api/users.list?limit=200"
 		if cursor != "" {
 			endpoint += "&cursor=" + url.QueryEscape(cursor)
@@ -115,6 +115,7 @@ func Slack(ctx context.Context, credentials map[string]string) ([]protocol.Membe
 		}
 		users = append(users, page...)
 		if next == "" {
+			usersComplete = true
 			break
 		}
 		if seen[next] {
@@ -122,6 +123,9 @@ func Slack(ctx context.Context, credentials map[string]string) ([]protocol.Membe
 		}
 		seen[next] = true
 		cursor = next
+	}
+	if !usersComplete {
+		return nil, nil, errPaginationLimit
 	}
 
 	lastSeen := map[string]int64{}

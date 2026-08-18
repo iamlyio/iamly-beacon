@@ -4,9 +4,12 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"golang.org/x/crypto/chacha20poly1305"
 )
 
 type memoryWrapper struct{ key byte }
@@ -101,6 +104,51 @@ func TestTamperingIsRejected(t *testing.T) {
 	}
 	if _, err := store.Load(context.Background()); err == nil {
 		t.Fatal("Load() accepted a modified vault")
+	}
+}
+
+func TestMalformedNonceIsRejectedWithoutPanicking(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "vault.bin")
+	store := NewStore(path, "projects/p/locations/l/keyRings/r/cryptoKeys/k", memoryWrapper{key: 7})
+	if err := store.Save(context.Background(), Empty()); err != nil {
+		t.Fatal(err)
+	}
+	blob, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var file envelope
+	if err := json.Unmarshal(blob, &file); err != nil {
+		t.Fatal(err)
+	}
+	file.Nonce = make([]byte, chacha20poly1305.NonceSizeX-1)
+	blob, err = json.Marshal(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, blob, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Load(context.Background()); err == nil {
+		t.Fatal("Load() accepted an invalid nonce")
+	}
+}
+
+func TestSaveSecuresExistingVaultDirectory(t *testing.T) {
+	directory := filepath.Join(t.TempDir(), "beacon")
+	if err := os.Mkdir(directory, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(directory, "vault.bin")
+	if err := NewStore(path, "projects/p/locations/l/keyRings/r/cryptoKeys/k", memoryWrapper{key: 7}).Save(context.Background(), Empty()); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o700 {
+		t.Fatalf("vault directory mode=%o, want 700", info.Mode().Perm())
 	}
 }
 

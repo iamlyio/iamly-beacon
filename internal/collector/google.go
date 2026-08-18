@@ -12,7 +12,6 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -70,7 +69,7 @@ func googleAccessToken(ctx context.Context, credentials map[string]string) (stri
 	var payload struct {
 		AccessToken string `json:"access_token"`
 	}
-	if json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&payload) != nil || !successful(response.StatusCode) || payload.AccessToken == "" {
+	if decodeVendorJSON(response.Body, 1<<20, &payload) != nil || !successful(response.StatusCode) || payload.AccessToken == "" {
 		return "", responseError("Google", response)
 	}
 	return payload.AccessToken, nil
@@ -97,7 +96,7 @@ func Google(ctx context.Context, credentials map[string]string) ([]protocol.Memb
 	var members []protocol.Member
 	cursor := ""
 	seen := map[string]bool{}
-	for {
+	for page := 1; page <= maxVendorPages; page++ {
 		endpoint, _ := url.Parse("https://admin.googleapis.com/admin/directory/v1/users")
 		query := endpoint.Query()
 		query.Set("customer", "my_customer")
@@ -116,7 +115,7 @@ func Google(ctx context.Context, credentials map[string]string) ([]protocol.Memb
 			Users []directoryUser `json:"users"`
 			Next  string          `json:"nextPageToken"`
 		}
-		decodeErr := json.NewDecoder(io.LimitReader(response.Body, 32<<20)).Decode(&payload)
+		decodeErr := decodeVendorJSON(response.Body, 32<<20, &payload)
 		response.Body.Close()
 		if !successful(response.StatusCode) {
 			return nil, nil, responseError("Google", response)
@@ -140,7 +139,7 @@ func Google(ctx context.Context, credentials map[string]string) ([]protocol.Memb
 			members = append(members, protocol.Member{ID: stringPointer(user.ID), Email: stringPointer(user.PrimaryEmail), Name: stringPointer(user.Name.FullName), Status: status, Role: stringPointer(role), CreatedAt: stringPointer(user.CreationTime), LastLoginAt: stringPointer(user.LastLoginTime)})
 		}
 		if payload.Next == "" {
-			break
+			return members, nil, nil
 		}
 		if seen[payload.Next] {
 			return nil, nil, errRepeatedCursor
@@ -148,5 +147,5 @@ func Google(ctx context.Context, credentials map[string]string) ([]protocol.Memb
 		seen[payload.Next] = true
 		cursor = payload.Next
 	}
-	return members, nil, nil
+	return nil, nil, errPaginationLimit
 }

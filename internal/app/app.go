@@ -30,6 +30,7 @@ var keyNamePattern = regexp.MustCompile(`^projects/[^/]+/locations/[^/]+/keyRing
 var versionPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$`)
 var integrationNamePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,63}$`)
 var credentialNamePattern = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_-]{0,63}$`)
+var beaconIDPattern = regexp.MustCompile(`^bcn_[A-Za-z0-9_-]{22}$`)
 
 const (
 	maxCredentialImportBytes   = 1 << 20
@@ -165,6 +166,9 @@ func (a *App) storeSecret(ctx context.Context, arguments []string) error {
 		}
 		if value == "" {
 			return fmt.Errorf("%s.%s is required", integration, name)
+		}
+		if len(value) > maxCredentialValueBytes {
+			return fmt.Errorf("%s.%s exceeds the 256 KiB credential limit", integration, name)
 		}
 	}
 	if integration == "bamboohr" {
@@ -419,6 +423,9 @@ func (a *App) configure(ctx context.Context, arguments []string) error {
 		if err != nil {
 			return err
 		}
+		if !beaconIDPattern.MatchString(enrolled.BeaconID) || invalidDisplayText(enrolled.BeaconName, 80) {
+			return errors.New("control plane returned an invalid Beacon identity")
+		}
 		result.Data.ControlPlane.BeaconID = enrolled.BeaconID
 		result.Data.ControlPlane.BeaconName = enrolled.BeaconName
 		result.Data.ControlPlane.SigningPrivateKey = identity.PrivateKey
@@ -600,16 +607,15 @@ func validateSetup(result, initial tui.SetupResult, hasVault bool, version strin
 	if err != nil || parsed.Host == "" {
 		return errors.New("iamly.io control-plane URL must be absolute")
 	}
-	if parsed.Scheme != "https" && parsed.Hostname() != "localhost" && parsed.Hostname() != "127.0.0.1" {
+	localHTTP := parsed.Scheme == "http" && (parsed.Hostname() == "localhost" || parsed.Hostname() == "127.0.0.1")
+	if parsed.Scheme != "https" && !localHTTP {
 		return errors.New("iamly.io control-plane URL must use HTTPS")
 	}
 	if parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" || (parsed.Path != "" && parsed.Path != "/") {
 		return errors.New("iamly.io control-plane URL must be an origin without credentials, a path, query, or fragment")
 	}
 	name := strings.TrimSpace(result.Data.ControlPlane.BeaconName)
-	if name == "" || len(name) > 80 || strings.IndexFunc(name, func(character rune) bool {
-		return character < 0x20 || character == 0x7f
-	}) >= 0 {
+	if invalidDisplayText(name, 80) {
 		return errors.New("Beacon name must contain 1 to 80 printable characters")
 	}
 	if !versionPattern.MatchString(version) {
@@ -632,7 +638,7 @@ func validateSetup(result, initial tui.SetupResult, hasVault bool, version strin
 }
 
 func completeIdentity(controlPlane vault.ControlPlane) bool {
-	if controlPlane.BeaconID == "" || controlPlane.BeaconName == "" {
+	if !beaconIDPattern.MatchString(controlPlane.BeaconID) || invalidDisplayText(controlPlane.BeaconName, 80) {
 		return false
 	}
 	privateKey, err := base64.RawURLEncoding.DecodeString(controlPlane.SigningPrivateKey)
@@ -646,6 +652,12 @@ func completeIdentity(controlPlane vault.ControlPlane) bool {
 		return false
 	}
 	return string(ed25519.PrivateKey(privateKey).Public().(ed25519.PublicKey)) == string(publicKey)
+}
+
+func invalidDisplayText(value string, maximumBytes int) bool {
+	return strings.TrimSpace(value) == "" || len(value) > maximumBytes || strings.IndexFunc(value, func(character rune) bool {
+		return character < 0x20 || character == 0x7f
+	}) >= 0
 }
 
 func nonInteractiveSetup(arguments []string, initial tui.SetupResult, stdin io.Reader) (tui.SetupResult, error) {

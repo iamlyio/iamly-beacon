@@ -1,0 +1,2 @@
+# Synthetic PEM marker used by the Google newline-normalization unit test.
+d22fd6118eaa473ef2808aff131052be0e0d81d6:internal/collector/google_test.go:private-key:6

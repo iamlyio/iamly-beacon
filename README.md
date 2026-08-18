@@ -32,6 +32,7 @@ version from `VERSION`; `make build` stamps that value into `beacon version`.
 - Single-use enrollment tokens are accepted through masked TUI input or standard input and are never persisted.
 - Signed, nonce-protected outbound review-job polling with concurrent per-app uploads.
 - Bounded transient retries for vendor APIs and idempotent result uploads; expired jobs resume with only their missing applications.
+- Strict vendor-response size and pagination limits; redirects are refused so local authorization headers cannot cross request boundaries.
 - Local BambooHR, Google Workspace, GitHub, Slack, and Zoom account collectors.
 - GitHub deploy-key inventory across accessible organization repositories; only non-secret metadata is uploaded, never key material.
 - GitHub current-month net billing usage, normalized as USD spend when the organization billing API is available.
