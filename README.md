@@ -14,32 +14,61 @@ Each signed poll reports the host name, private interface addresses, and Beacon
 version; iamly.io observes the public source address at its trusted reverse
 proxy. No vendor credential or signing private key is included.
 
-## Download and install
+## Quick start
 
-[GitHub Releases](https://github.com/iamlyio/iamly-beacon/releases/tag/v2.2.0-rc.1)
-provides ready-to-run binaries with no language runtime to install. Choose the
-archive matching the machine that will keep your application credentials:
-
-For a guided Linux or macOS installation, run:
+First, sign in to [iamly development](https://app-dev.iamly.io), open
+**Integrations → Beacon**, and create a single-use enrollment token. Then run
+the guided installer on the Linux or macOS server that will host Beacon:
 
 ```sh
 curl --proto '=https' --tlsv1.2 -fsSL \
   https://raw.githubusercontent.com/iamlyio/iamly-beacon/main/install.sh | sh
 ```
 
-The installer detects AMD64 or ARM64, downloads the pinned release candidate,
-verifies its SHA-256 checksum, installs `beacon` under `~/.local/bin`, and then
-opens the local terminal for guided setup. To install without starting setup:
+The installer:
+
+- detects Linux or macOS on AMD64 or ARM64;
+- downloads the pinned Beacon release and verifies its SHA-256 checksum and
+  embedded version;
+- installs `beacon` atomically under `~/.local/bin`; and
+- opens guided setup in the local terminal.
+
+During setup, enter `https://beacon-dev.iamly.io`, choose a Beacon name, and
+paste the single-use enrollment token into the masked prompt. Local encrypted
+key storage is selected by default. Once enrollment succeeds, add a
+least-privilege collector credential and start the outbound worker:
+
+```sh
+beacon secret set github
+beacon status
+beacon run
+```
+
+Replace `github` with another [supported collector](#supported-collectors).
+Beacon needs outbound HTTPS access but no inbound port. Never paste enrollment
+tokens or collector credentials into shell arguments, issues, or logs.
+
+To use Google Cloud KMS or AWS KMS instead of local key storage, install without
+starting setup and then select the provider explicitly:
 
 ```sh
 curl --proto '=https' --tlsv1.2 -fsSL \
   https://raw.githubusercontent.com/iamlyio/iamly-beacon/main/install.sh \
   | sh -s -- --no-configure
+
+beacon configure --google-kms
+# or: beacon configure --aws-kms
 ```
 
 Piping a remote script into a shell trusts the GitHub repository and delivery
 path. Review [`install.sh`](install.sh) first or use the checksum-first manual
-steps below when that trust model is not appropriate.
+installation below when that trust model is not appropriate.
+
+## Manual download and verification
+
+[GitHub Releases](https://github.com/iamlyio/iamly-beacon/releases/tag/v2.2.0-rc.1)
+provides ready-to-run binaries with no language runtime to install. Choose the
+archive matching the server that will keep your application credentials:
 
 | Operating system | AMD64 / Intel | ARM64 / Apple silicon |
 | --- | --- | --- |
@@ -112,38 +141,10 @@ With the GitHub CLI installed, verify provenance before installation:
 gh attestation verify "$archive" --repo iamlyio/iamly-beacon
 ```
 
-After installation, continue with [Quick start](#quick-start). Beacon needs
-outbound HTTPS access but no inbound port.
-
-## Quick start
-
-1. In iamly.io, open **Integrations → Beacon**, create an enrollment token, and
-   keep the single-use token available.
-2. Choose local key storage, Google Cloud KMS, or AWS KMS for the encrypted
-   vault. Local storage is the simplest default; cloud KMS keeps the wrapping
-   key outside the Beacon host.
-3. Start the guided setup, then enter the Beacon name, enrollment token, and
-   `https://beacon-dev.iamly.io` when prompted:
-
-   ```sh
-   beacon configure --local
-   ```
-
-   Use `beacon configure --google-kms` or `beacon configure --aws-kms` to
-   select a cloud key instead.
-
-4. Add one or more read-only integrations, then confirm the non-secret status:
-
-   ```sh
-   beacon secret set google
-   beacon status
-   ```
-
-5. Start the outbound worker with `beacon run`, or install the included
-   [systemd user service](deploy/beacon.service) on Linux.
-
-Beacon requires no inbound port. Keep its vault directory private, and never
-paste integration credentials into issues, logs, or command-line arguments.
+After a manual installation, run `beacon configure --local` and continue with
+the collector and worker commands in [Quick start](#quick-start). Use
+`beacon configure --google-kms` or `beacon configure --aws-kms` when the
+wrapping key must remain in a cloud KMS.
 
 ## Why Go
 
