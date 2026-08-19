@@ -10,7 +10,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"net/url"
 	"os"
 	"regexp"
 	"sort"
@@ -33,6 +32,8 @@ var credentialNamePattern = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_-]{0,63}$`)
 var beaconIDPattern = regexp.MustCompile(`^bcn_[A-Za-z0-9_-]{22}$`)
 
 const (
+	productionControlPlane     = "https://beacon.iamly.io"
+	developmentControlPlane    = "https://beacon-dev.iamly.io"
 	maxCredentialImportBytes   = 1 << 20
 	maxCredentialImportEntries = 256
 	maxCredentialValueBytes    = 256 << 10
@@ -422,6 +423,10 @@ func (a *App) configure(ctx context.Context, arguments []string) error {
 	if provider == vault.ProviderLocal {
 		initial.KeyName = vault.LocalKeyName
 	}
+	initial.Data.ControlPlane.URL = productionControlPlane
+	if options.dev {
+		initial.Data.ControlPlane.URL = developmentControlPlane
+	}
 
 	var result tui.SetupResult
 	if !options.nonInteractive {
@@ -662,16 +667,8 @@ func validateSetup(result, initial tui.SetupResult, hasVault bool, version strin
 	default:
 		return errors.New("choose local, Google KMS, or AWS KMS vault storage")
 	}
-	parsed, err := url.ParseRequestURI(result.Data.ControlPlane.URL)
-	if err != nil || parsed.Host == "" {
-		return errors.New("iamly.io control-plane URL must be absolute")
-	}
-	localHTTP := parsed.Scheme == "http" && (parsed.Hostname() == "localhost" || parsed.Hostname() == "127.0.0.1")
-	if parsed.Scheme != "https" && !localHTTP {
-		return errors.New("iamly.io control-plane URL must use HTTPS")
-	}
-	if parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" || (parsed.Path != "" && parsed.Path != "/") {
-		return errors.New("iamly.io control-plane URL must be an origin without credentials, a path, query, or fragment")
+	if result.Data.ControlPlane.URL != productionControlPlane && result.Data.ControlPlane.URL != developmentControlPlane {
+		return errors.New("Beacon control plane must be the iamly.io production or development service")
 	}
 	name := strings.TrimSpace(result.Data.ControlPlane.BeaconName)
 	if invalidDisplayText(name, 80) {
@@ -743,8 +740,8 @@ type configureOptions struct {
 	provider         vault.Provider
 	providerExplicit bool
 	nonInteractive   bool
+	dev              bool
 	keyName          string
-	controlPlane     string
 	name             string
 	tokenFromStdin   bool
 }
@@ -755,8 +752,8 @@ func parseConfigureOptions(arguments []string) (configureOptions, error) {
 	local := flags.Bool("local", false, "protect the vault with a local key file")
 	googleKMS := flags.Bool("google-kms", false, "protect the vault with Google Cloud KMS")
 	awsKMS := flags.Bool("aws-kms", false, "protect the vault with AWS KMS")
+	dev := flags.Bool("dev", false, "connect to the iamly.io development control plane")
 	keyName := flags.String("kms-key", "", "Google Cloud or AWS KMS key identifier")
-	controlPlane := flags.String("control-plane", "", "iamly.io control-plane URL")
 	name := flags.String("name", "", "Beacon name")
 	tokenFromStdin := flags.Bool("enrollment-token-stdin", false, "read the enrollment token from stdin")
 	if err := flags.Parse(arguments); err != nil {
@@ -767,8 +764,8 @@ func parseConfigureOptions(arguments []string) (configureOptions, error) {
 	}
 	selected := 0
 	options := configureOptions{
+		dev:            *dev,
 		keyName:        strings.TrimSpace(*keyName),
-		controlPlane:   strings.TrimSpace(*controlPlane),
 		name:           strings.TrimSpace(*name),
 		tokenFromStdin: *tokenFromStdin,
 	}
@@ -793,13 +790,13 @@ func parseConfigureOptions(arguments []string) (configureOptions, error) {
 		options.provider = vault.ProviderGoogleKMS
 		options.providerExplicit = true
 	}
-	options.nonInteractive = options.keyName != "" || options.controlPlane != "" || options.name != "" || options.tokenFromStdin
+	options.nonInteractive = options.keyName != "" || options.name != "" || options.tokenFromStdin
 	return options, nil
 }
 
 func nonInteractiveSetup(options configureOptions, initial tui.SetupResult, stdin io.Reader) (tui.SetupResult, error) {
-	if options.controlPlane == "" || options.name == "" {
-		return tui.SetupResult{}, errors.New("noninteractive configure requires --control-plane and --name")
+	if options.name == "" {
+		return tui.SetupResult{}, errors.New("noninteractive configure requires --name")
 	}
 	if initial.Provider != vault.ProviderLocal && options.keyName == "" && initial.KeyName == "" {
 		return tui.SetupResult{}, errors.New("noninteractive cloud KMS configure requires --kms-key")
@@ -812,7 +809,6 @@ func nonInteractiveSetup(options configureOptions, initial tui.SetupResult, stdi
 	if options.keyName != "" {
 		result.KeyName = options.keyName
 	}
-	result.Data.ControlPlane.URL = strings.TrimRight(options.controlPlane, "/")
 	result.Data.ControlPlane.BeaconName = options.name
 	if options.tokenFromStdin {
 		blob, err := io.ReadAll(io.LimitReader(stdin, 4097))
@@ -839,9 +835,9 @@ func printHelp() {
 
 Usage:
   beacon                 Open the terminal interface
-  beacon configure [--local | --google-kms | --aws-kms]
-                         Configure interactively; new vaults default to local storage
-  beacon configure [STORAGE] --control-plane URL --name NAME [--kms-key KEY] [--enrollment-token-stdin]
+  beacon configure [--local | --google-kms | --aws-kms] [--dev]
+                         Configure interactively; production is the default control plane
+  beacon configure [STORAGE] [--dev] --name NAME [--kms-key KEY] [--enrollment-token-stdin]
                          Configure noninteractively; cloud KMS backends require --kms-key
   beacon secret set [integration]
                          Configure one supported integration through guided prompts

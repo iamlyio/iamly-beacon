@@ -58,6 +58,12 @@ PATH="$test_root/mock-bin:$PATH" INSTALLER_FIXTURES="$test_root/fixtures" \
 [ -x "$test_root/bin/beacon" ]
 [ "$("$test_root/bin/beacon" version)" = "Beacon $version" ]
 
+PATH="$test_root/mock-bin:$PATH" INSTALLER_FIXTURES="$test_root/fixtures" \
+  IAMLY_BEACON_RELEASE_BASE=https://fixtures.invalid \
+  "$repo_root/install.sh" --dev --install-dir "$test_root/dev-bin" \
+  >"$test_root/dev.out"
+grep -Fq 'beacon configure --local --dev' "$test_root/dev.out"
+
 printf 'corrupt' >> "$test_root/fixtures/$archive"
 if PATH="$test_root/mock-bin:$PATH" INSTALLER_FIXTURES="$test_root/fixtures" \
   IAMLY_BEACON_RELEASE_BASE=https://fixtures.invalid \

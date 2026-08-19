@@ -10,15 +10,15 @@ pushing a release tag.
 - [x] Replace the public branch and tag history with the reviewed release tree
   in one root commit.
 - [ ] Confirm the supported-version policy and community moderation channel.
-- [x] Confirm the development prerelease is `v2.2.0-rc.1` and approve its
+- [ ] Confirm the development prerelease is `v2.2.0-rc.2` and approve its
   changelog.
 
 ## Production readiness
 
 - [ ] Route `https://beacon.iamly.io/api/v1/beacon/*` to the production control
   plane and verify TLS, proxy trust, rate limits, and request-size limits before
-  publishing a stable release. The release candidate uses
-  `https://beacon-dev.iamly.io`.
+  publishing a stable release. Release candidates use that endpoint only when
+  configured with `--dev`.
 - [ ] Complete a new enrollment using the packaged binary and a single-use
   production token.
 - [ ] Run one end-to-end review with a least-privilege test integration.

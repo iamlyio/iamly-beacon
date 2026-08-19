@@ -3,6 +3,20 @@
 All notable changes to iamly Beacon are documented here. The project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0-rc.2] - 2026-08-19
+
+### Added
+
+- `--dev` selects the development control plane during installation and
+  configuration.
+
+### Changed
+
+- Beacon now selects `https://beacon.iamly.io` by default instead of asking
+  customers for a control-plane URL.
+- The terminal interface now uses Bubble Tea v2 to prevent terminal capability
+  replies from leaking into form fields over tmux and SSH.
+
 ## [2.2.0-rc.1] - 2026-08-19
 
 ### Added
@@ -53,6 +67,7 @@ All notable changes to iamly Beacon are documented here. The project follows
 - Initial Beacon collector, encrypted GCP KMS-backed vault, enrollment flow,
   signed control-plane protocol, and core SaaS collectors.
 
+[2.2.0-rc.2]: https://github.com/iamlyio/iamly-beacon/releases/tag/v2.2.0-rc.2
 [2.2.0-rc.1]: https://github.com/iamlyio/iamly-beacon/releases/tag/v2.2.0-rc.1
 [2.1.1]: https://github.com/iamlyio/iamly-beacon/blob/main/CHANGELOG.md#211---2026-08-18
 [2.1.0]: https://github.com/iamlyio/iamly-beacon/blob/main/CHANGELOG.md#210---2026-08-18

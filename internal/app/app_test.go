@@ -225,7 +225,7 @@ func (e *testEnroller) Enroll(_ context.Context, controlPlane, token, name, publ
 	if !e.kms.selfTested {
 		return enrollment.Result{}, errors.New("enrollment happened before KMS self-test")
 	}
-	if controlPlane != "https://control.example" || token != testToken() || name != "Production" || publicKey == "" || version != "v1.2.3" {
+	if controlPlane != productionControlPlane || token != testToken() || name != "Production" || publicKey == "" || version != "v1.2.3" {
 		return enrollment.Result{}, errors.New("unexpected enrollment input")
 	}
 	e.kms.enrolled = true
@@ -254,7 +254,6 @@ func TestConfigureEnrollsAfterKMSSelfTestAndPersistsIdentityWithoutToken(t *test
 	}
 	arguments := []string{
 		"--kms-key", testKeyName,
-		"--control-plane", "https://control.example/",
 		"--name", "Production",
 		"--enrollment-token-stdin",
 	}
@@ -285,7 +284,6 @@ func TestConfigureLocalCreatesUsableRestrictedVault(t *testing.T) {
 	application.enroller = staticEnroller{}
 	if err := application.configure(context.Background(), []string{
 		"--local",
-		"--control-plane", "https://control.example",
 		"--name", "Development",
 		"--enrollment-token-stdin",
 	}); err != nil {
@@ -321,6 +319,41 @@ func TestConfigureLocalCreatesUsableRestrictedVault(t *testing.T) {
 	}
 }
 
+func TestConfigureDevSelectsDevelopmentControlPlane(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("BEACON_HOME", home)
+	application, err := New("v1.2.3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	application.stdin = bytes.NewBufferString(testToken() + "\n")
+	application.enroller = staticEnroller{}
+	if err := application.configure(context.Background(), []string{
+		"--local",
+		"--dev",
+		"--name", "Development",
+		"--enrollment-token-stdin",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	metadata, err := vault.ReadMetadata(application.paths.Vault)
+	if err != nil {
+		t.Fatal(err)
+	}
+	localKey, err := vault.OpenLocalKey(application.paths.LocalKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer localKey.Close()
+	data, err := vault.NewStore(application.paths.Vault, metadata.Provider, metadata.KeyName, localKey).Load(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if data.ControlPlane.URL != developmentControlPlane {
+		t.Fatalf("control plane = %q, want %q", data.ControlPlane.URL, developmentControlPlane)
+	}
+}
+
 func TestConfigureWithBlankTokenRetainsExistingIdentity(t *testing.T) {
 	kms := &testKMS{}
 	identity, err := enrollment.GenerateIdentity()
@@ -351,7 +384,6 @@ func TestConfigureWithBlankTokenRetainsExistingIdentity(t *testing.T) {
 	}
 	arguments := []string{
 		"--kms-key", testKeyName,
-		"--control-plane", "https://new.example",
 		"--name", "Production",
 	}
 	if err := application.configure(context.Background(), arguments); err != nil {
@@ -364,7 +396,7 @@ func TestConfigureWithBlankTokenRetainsExistingIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if data.ControlPlane.URL != "https://new.example" || data.ControlPlane.BeaconID != existing.ControlPlane.BeaconID ||
+	if data.ControlPlane.URL != productionControlPlane || data.ControlPlane.BeaconID != existing.ControlPlane.BeaconID ||
 		data.ControlPlane.SigningPrivateKey != existing.ControlPlane.SigningPrivateKey {
 		t.Fatalf("reconfigured identity = %#v", data.ControlPlane)
 	}
@@ -383,7 +415,6 @@ func TestInvalidTokenFailsBeforeOpeningKMS(t *testing.T) {
 	}
 	err := application.configure(context.Background(), []string{
 		"--kms-key", testKeyName,
-		"--control-plane", "https://control.example",
 		"--name", "Production",
 		"--enrollment-token-stdin",
 	})
@@ -528,14 +559,17 @@ func TestConfigureStorageSelectors(t *testing.T) {
 		provider         vault.Provider
 		providerExplicit bool
 		nonInteractive   bool
+		dev              bool
 		wantError        bool
 	}{
 		{name: "new default stays interactive", arguments: nil},
 		{name: "local", arguments: []string{"--local"}, provider: vault.ProviderLocal, providerExplicit: true},
 		{name: "google", arguments: []string{"--google-kms"}, provider: vault.ProviderGoogleKMS, providerExplicit: true},
 		{name: "aws", arguments: []string{"--aws-kms"}, provider: vault.ProviderAWSKMS, providerExplicit: true},
+		{name: "development stays interactive", arguments: []string{"--dev"}, dev: true},
 		{name: "legacy kms key infers google", arguments: []string{"--kms-key", testKeyName}, provider: vault.ProviderGoogleKMS, providerExplicit: true, nonInteractive: true},
 		{name: "conflict", arguments: []string{"--local", "--aws-kms"}, wantError: true},
+		{name: "customer URL rejected", arguments: []string{"--control-plane", "https://other.example"}, wantError: true},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -549,7 +583,7 @@ func TestConfigureStorageSelectors(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if got.provider != test.provider || got.providerExplicit != test.providerExplicit || got.nonInteractive != test.nonInteractive {
+			if got.provider != test.provider || got.providerExplicit != test.providerExplicit || got.nonInteractive != test.nonInteractive || got.dev != test.dev {
 				t.Fatalf("options = %#v", got)
 			}
 		})
@@ -589,7 +623,6 @@ func TestConfigureCanRewrapExistingVaultToLocalStorage(t *testing.T) {
 	}
 	if err := application.configure(context.Background(), []string{
 		"--local",
-		"--control-plane", "https://new.example",
 		"--name", "Production",
 	}); err != nil {
 		t.Fatal(err)
@@ -605,7 +638,7 @@ func TestConfigureCanRewrapExistingVaultToLocalStorage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if data.ControlPlane.URL != "https://new.example" || data.ControlPlane.SigningPrivateKey != existing.ControlPlane.SigningPrivateKey {
+	if data.ControlPlane.URL != productionControlPlane || data.ControlPlane.SigningPrivateKey != existing.ControlPlane.SigningPrivateKey {
 		t.Fatalf("migrated identity = %#v", data.ControlPlane)
 	}
 	if len(opened) != 2 || opened[0] != vault.ProviderGoogleKMS || opened[1] != vault.ProviderLocal || !localCreate {

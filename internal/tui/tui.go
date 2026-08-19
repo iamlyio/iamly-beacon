@@ -5,9 +5,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/textinput"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/textinput"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/iamlyio/iamly-beacon/internal/vault"
 )
 
@@ -50,7 +50,7 @@ var menuItems = []struct {
 }
 
 func Select(version string) (Action, error) {
-	result, err := tea.NewProgram(menuModel{version: version}, tea.WithAltScreen()).Run()
+	result, err := tea.NewProgram(menuModel{version: version}).Run()
 	if err != nil {
 		return "", err
 	}
@@ -60,7 +60,7 @@ func Select(version string) (Action, error) {
 func (m menuModel) Init() tea.Cmd { return nil }
 
 func (m menuModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
-	if key, ok := message.(tea.KeyMsg); ok {
+	if key, ok := message.(tea.KeyPressMsg); ok {
 		switch key.String() {
 		case "ctrl+c", "q", "esc":
 			m.choice = Quit
@@ -81,7 +81,7 @@ func (m menuModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m menuModel) View() string {
+func (m menuModel) View() tea.View {
 	view := brand.Render("◆") + "  " + title.Render("Beacon") + "  " + mutedStyle.Render(m.version)
 	view += "\n" + mutedStyle.Render("iamly.io collection boundary · credentials stay here") + "\n\n"
 	for index, item := range menuItems {
@@ -92,7 +92,7 @@ func (m menuModel) View() string {
 		view += fmt.Sprintf("%s%s\n    %s\n\n", marker, label, mutedStyle.Render(item.detail))
 	}
 	view += mutedStyle.Render("↑/↓ move  •  enter select  •  q quit")
-	return panel.Render(view)
+	return altScreenView(panel.Render(view))
 }
 
 type SetupResult struct {
@@ -255,7 +255,7 @@ func Secret() (SecretResult, bool, error) {
 		input.Prompt = labels[index] + "\n  "
 		input.Placeholder = placeholders[index]
 		input.CharLimit = 4096
-		input.Width = 76
+		input.SetWidth(76)
 		if index == 2 {
 			input.EchoMode = textinput.EchoPassword
 			input.EchoCharacter = '•'
@@ -267,7 +267,7 @@ func Secret() (SecretResult, bool, error) {
 		inputs:      inputs,
 		title:       "Store integration secret",
 		description: "The value is masked and encrypted locally before it is written.",
-	}, tea.WithAltScreen()).Run()
+	}).Run()
 	if err != nil {
 		return SecretResult{}, false, err
 	}
@@ -298,7 +298,7 @@ func GuidedSecrets(integration string) (GuidedSecretResult, bool, error) {
 		input.Prompt = field.label + "\n  "
 		input.Placeholder = field.placeholder
 		input.CharLimit = 262144
-		input.Width = 76
+		input.SetWidth(76)
 		if field.secret {
 			input.EchoMode = textinput.EchoPassword
 			input.EchoCharacter = '•'
@@ -310,7 +310,7 @@ func GuidedSecrets(integration string) (GuidedSecretResult, bool, error) {
 		inputs:      inputs,
 		title:       "Configure " + spec.label,
 		description: "All required values are saved together in the encrypted local vault.",
-	}, tea.WithAltScreen()).Run()
+	}).Run()
 	if err != nil {
 		return GuidedSecretResult{}, false, err
 	}
@@ -338,7 +338,7 @@ type secretModel struct {
 func (m secretModel) Init() tea.Cmd { return textinput.Blink }
 
 func (m secretModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
-	if key, ok := message.(tea.KeyMsg); ok {
+	if key, ok := message.(tea.KeyPressMsg); ok {
 		switch key.String() {
 		case "ctrl+c", "esc":
 			m.cancelled = true
@@ -370,7 +370,7 @@ func (m secretModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	return m, tea.Batch(commands...)
 }
 
-func (m secretModel) View() string {
+func (m secretModel) View() tea.View {
 	view := brand.Render("◆") + "  " + title.Render(m.title) + "\n"
 	view += mutedStyle.Render(m.description) + "\n\n"
 	for index := range m.inputs {
@@ -381,13 +381,13 @@ func (m secretModel) View() string {
 		action = "encrypt"
 	}
 	view += active.Render("Enter") + " " + action + "  •  " + mutedStyle.Render("tab next  •  esc cancel")
-	return panel.Width(86).Render(view)
+	return altScreenView(panel.Width(86).Render(view))
 }
 
 func Setup(initial SetupResult) (SetupResult, bool, error) {
-	labels := []string{"iamly.io control-plane URL", "Beacon name", "Enrollment token"}
-	values := []string{initial.Data.ControlPlane.URL, initial.Data.ControlPlane.BeaconName, ""}
-	placeholders := []string{"https://beacon-dev.iamly.io", "Development Beacon", "paste token from iamly.io (blank keeps current identity)"}
+	labels := []string{"Beacon name", "Enrollment token"}
+	values := []string{initial.Data.ControlPlane.BeaconName, ""}
+	placeholders := []string{"Production Beacon", "paste token from iamly.io (blank keeps current identity)"}
 	description := "The vault is encrypted with a local key stored beside it with restrictive permissions."
 	if initial.Provider == vault.ProviderGoogleKMS {
 		labels = append([]string{"Google Cloud KMS CryptoKey resource"}, labels...)
@@ -407,7 +407,7 @@ func Setup(initial SetupResult) (SetupResult, bool, error) {
 		input.Placeholder = placeholders[index]
 		input.SetValue(values[index])
 		input.CharLimit = 512
-		input.Width = 76
+		input.SetWidth(76)
 		if index == len(labels)-1 {
 			input.EchoMode = textinput.EchoPassword
 			input.EchoCharacter = '•'
@@ -421,7 +421,7 @@ func Setup(initial SetupResult) (SetupResult, bool, error) {
 		description: description,
 		action:      "configure",
 	}
-	result, err := tea.NewProgram(model, tea.WithAltScreen()).Run()
+	result, err := tea.NewProgram(model).Run()
 	if err != nil {
 		return SetupResult{}, false, err
 	}
@@ -439,12 +439,17 @@ func Setup(initial SetupResult) (SetupResult, bool, error) {
 		keyOffset = 1
 		keyName = strings.TrimSpace(final.inputs[0].Value())
 	}
-	data.ControlPlane.URL = strings.TrimRight(strings.TrimSpace(final.inputs[keyOffset].Value()), "/")
-	data.ControlPlane.BeaconName = strings.TrimSpace(final.inputs[keyOffset+1].Value())
+	data.ControlPlane.BeaconName = strings.TrimSpace(final.inputs[keyOffset].Value())
 	return SetupResult{
 		Provider:        initial.Provider,
 		KeyName:         keyName,
 		Data:            data,
-		EnrollmentToken: strings.TrimSpace(final.inputs[keyOffset+2].Value()),
+		EnrollmentToken: strings.TrimSpace(final.inputs[keyOffset+1].Value()),
 	}, true, nil
+}
+
+func altScreenView(content string) tea.View {
+	view := tea.NewView(content)
+	view.AltScreen = true
+	return view
 }

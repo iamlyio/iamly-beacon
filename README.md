@@ -8,21 +8,33 @@ Beacon is iamly.io's customer-hosted collector. It gathers and enriches identity
 [Beacon repository](https://github.com/iamlyio/iamly-beacon) ·
 [Product domain](https://iamly.io)
 
-The current release candidate connects to the development control plane at
-`https://beacon-dev.iamly.io`. It is intended for testing, not production use.
+Beacon connects to the production control plane at `https://beacon.iamly.io`
+by default. Pass `--dev` during installation or configuration to use
+`https://beacon-dev.iamly.io`. The current release candidate is intended for
+testing, not production use.
 Each signed poll reports the host name, private interface addresses, and Beacon
 version; iamly.io observes the public source address at its trusted reverse
 proxy. No vendor credential or signing private key is included.
 
 ## Quick start
 
-First, sign in to [iamly development](https://app-dev.iamly.io), open
-**Integrations → Beacon**, and create a single-use enrollment token. Then run
-the guided installer on the Linux or macOS server that will host Beacon:
+First, open **Integrations → Beacon** in your iamly workspace and create a
+single-use enrollment token. Then run the guided installer on the Linux or
+macOS server that will host Beacon:
 
 ```sh
 curl --proto '=https' --tlsv1.2 -fsSL \
   https://raw.githubusercontent.com/iamlyio/iamly-beacon/main/install.sh | sh
+```
+
+The installer uses `https://beacon.iamly.io`. For development, create the token
+in [iamly development](https://app-dev.iamly.io) and select the development
+control plane explicitly:
+
+```sh
+curl --proto '=https' --tlsv1.2 -fsSL \
+  https://raw.githubusercontent.com/iamlyio/iamly-beacon/main/install.sh \
+  | sh -s -- --dev
 ```
 
 The installer:
@@ -33,10 +45,11 @@ The installer:
 - installs `beacon` atomically under `~/.local/bin`; and
 - opens guided setup in the local terminal.
 
-During setup, enter `https://beacon-dev.iamly.io`, choose a Beacon name, and
-paste the single-use enrollment token into the masked prompt. Local encrypted
-key storage is selected by default. Once enrollment succeeds, add a
-least-privilege collector credential and start the outbound worker:
+During setup, choose a Beacon name and paste the single-use enrollment token
+into the masked prompt. Beacon selects the control-plane URL; customers do not
+enter or override it. Local encrypted key storage is selected by default. Once
+enrollment succeeds, add a least-privilege collector credential and start the
+outbound worker:
 
 ```sh
 beacon secret set github
@@ -58,6 +71,7 @@ curl --proto '=https' --tlsv1.2 -fsSL \
 
 beacon configure --google-kms
 # or: beacon configure --aws-kms
+# add --dev to either command for development
 ```
 
 Piping a remote script into a shell trusts the GitHub repository and delivery
@@ -66,7 +80,7 @@ installation below when that trust model is not appropriate.
 
 ## Manual download and verification
 
-[GitHub Releases](https://github.com/iamlyio/iamly-beacon/releases/tag/v2.2.0-rc.1)
+[GitHub Releases](https://github.com/iamlyio/iamly-beacon/releases/tag/v2.2.0-rc.2)
 provides ready-to-run binaries with no language runtime to install. Choose the
 archive matching the server that will keep your application credentials:
 
@@ -82,7 +96,7 @@ For a typical Intel/AMD Linux host:
 
 ```sh
 archive=iamly-beacon_linux_amd64.tar.gz
-base=https://github.com/iamlyio/iamly-beacon/releases/download/v2.2.0-rc.1
+base=https://github.com/iamlyio/iamly-beacon/releases/download/v2.2.0-rc.2
 curl --fail --location --remote-name "$base/$archive"
 curl --fail --location --remote-name "$base/SHA256SUMS"
 grep " $archive\$" SHA256SUMS > SHA256SUMS.selected
@@ -101,7 +115,7 @@ Use `darwin_arm64` on Apple silicon or `darwin_amd64` on an Intel Mac:
 
 ```sh
 archive=iamly-beacon_darwin_arm64.tar.gz
-base=https://github.com/iamlyio/iamly-beacon/releases/download/v2.2.0-rc.1
+base=https://github.com/iamlyio/iamly-beacon/releases/download/v2.2.0-rc.2
 curl --fail --location --remote-name "$base/$archive"
 curl --fail --location --remote-name "$base/SHA256SUMS"
 grep " $archive\$" SHA256SUMS > SHA256SUMS.selected
@@ -119,7 +133,7 @@ ARM:
 
 ```powershell
 $Archive = "iamly-beacon_windows_amd64.zip"
-$Base = "https://github.com/iamlyio/iamly-beacon/releases/download/v2.2.0-rc.1"
+$Base = "https://github.com/iamlyio/iamly-beacon/releases/download/v2.2.0-rc.2"
 Invoke-WebRequest "$Base/$Archive" -OutFile $Archive
 Invoke-WebRequest "$Base/SHA256SUMS" -OutFile "SHA256SUMS"
 $Expected = ((Select-String -Path "SHA256SUMS" -Pattern " $Archive$").Line -split "\s+")[0]
@@ -142,7 +156,8 @@ gh attestation verify "$archive" --repo iamlyio/iamly-beacon
 ```
 
 After a manual installation, run `beacon configure --local` and continue with
-the collector and worker commands in [Quick start](#quick-start). Use
+the collector and worker commands in [Quick start](#quick-start). Add `--dev`
+to use the development control plane. Use
 `beacon configure --google-kms` or `beacon configure --aws-kms` when the
 wrapping key must remain in a cloud KMS.
 
@@ -385,9 +400,9 @@ Set `BEACON_HOME` to choose a local runtime directory. Otherwise Beacon uses the
 
 ```text
 beacon                 Open the interactive terminal interface
-beacon configure [--local | --google-kms | --aws-kms]
-                       Configure interactively; new vaults default to local storage
-beacon configure [STORAGE] --control-plane URL --name NAME [--kms-key KEY] --enrollment-token-stdin
+beacon configure [--local | --google-kms | --aws-kms] [--dev]
+                       Configure interactively; production is the default control plane
+beacon configure [STORAGE] [--dev] --name NAME [--kms-key KEY] --enrollment-token-stdin
                        Configure noninteractively; cloud providers require --kms-key
 beacon secret set [integration]
                        Guided setup for any supported collector;
