@@ -223,6 +223,8 @@ version from `VERSION`; `make build` stamps that value into `beacon version`.
 | Vercel | `vercel.token`, `vercel.teamId` | Team members, roles, and pending email invitations |
 | Asana | `asana.token`, `asana.workspaceGid` | Users visible in one workspace or organization |
 | Canva | `canva.token` | SCIM-managed team users and lifecycle status |
+| npm | `npmjs.token`, `npmjs.org` | Organization members and roles |
+| Docker Hub | `dockerhub.identifier`, `dockerhub.secret`, `dockerhub.org` | Organization members, roles, and recent activity |
 
 Each supported collector has guided credential setup:
 
@@ -236,7 +238,7 @@ beacon secret set slack
 beacon secret set tailscale
 beacon secret set twingate
 beacon secret set zoom
-# Also: anthropic, asana, canva, figma, linear, openai, and vercel
+# Also: anthropic, asana, canva, dockerhub, figma, linear, npmjs, openai, and vercel
 ```
 
 Beacon prompts for every required value, masks tokens and private keys, and

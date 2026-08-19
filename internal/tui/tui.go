@@ -152,6 +152,14 @@ var guidedSecretSpecs = map[string]guidedSecretSpec{
 			{name: "token", label: "SCIM token", placeholder: "paste SCIM token", secret: true},
 		},
 	},
+	"dockerhub": {
+		label: "Docker Hub",
+		fields: []guidedSecretField{
+			{name: "identifier", label: "Docker ID or organization", placeholder: "acme"},
+			{name: "secret", label: "Personal or organization access token", placeholder: "paste access token", secret: true},
+			{name: "org", label: "Organization", placeholder: "acme"},
+		},
+	},
 	"figma": {
 		label: "Figma",
 		fields: []guidedSecretField{
@@ -192,6 +200,13 @@ var guidedSecretSpecs = map[string]guidedSecretSpec{
 		label: "Notion",
 		fields: []guidedSecretField{
 			{name: "token", label: "Internal integration token", placeholder: "ntn_…", secret: true},
+		},
+	},
+	"npmjs": {
+		label: "npm",
+		fields: []guidedSecretField{
+			{name: "token", label: "Access token", placeholder: "npm_…", secret: true},
+			{name: "org", label: "Organization", placeholder: "acme"},
 		},
 	},
 	"openai": {
