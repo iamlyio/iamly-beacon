@@ -23,22 +23,22 @@ type KeyWrapper interface {
 func SelfTest(ctx context.Context, keyName string, wrapper KeyWrapper) error {
 	probe := make([]byte, 32)
 	if _, err := io.ReadFull(rand.Reader, probe); err != nil {
-		return fmt.Errorf("generate GCP KMS self-test value: %w", err)
+		return fmt.Errorf("generate vault key-provider self-test value: %w", err)
 	}
 	defer wipe(probe)
 
 	wrapped, err := wrapper.Wrap(ctx, keyName, probe)
 	if err != nil {
-		return fmt.Errorf("GCP KMS self-test: %w", err)
+		return fmt.Errorf("vault key-provider self-test: %w", err)
 	}
 	defer wipe(wrapped)
 	unwrapped, err := wrapper.Unwrap(ctx, keyName, wrapped)
 	if err != nil {
-		return fmt.Errorf("GCP KMS self-test: %w", err)
+		return fmt.Errorf("vault key-provider self-test: %w", err)
 	}
 	defer wipe(unwrapped)
 	if !bytes.Equal(probe, unwrapped) {
-		return fmt.Errorf("GCP KMS self-test: unwrapped value does not match")
+		return fmt.Errorf("vault key-provider self-test: unwrapped value does not match")
 	}
 	return nil
 }

@@ -28,7 +28,7 @@ func (m memoryWrapper) Unwrap(ctx context.Context, keyName string, ciphertext []
 
 func TestVaultRoundTripAndPermissions(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "vault.bin")
-	store := NewStore(path, "projects/acme/locations/global/keyRings/iamly/cryptoKeys/beacon", memoryWrapper{key: 0x5a})
+	store := NewStore(path, ProviderGoogleKMS, "projects/acme/locations/global/keyRings/iamly/cryptoKeys/beacon", memoryWrapper{key: 0x5a})
 	want := Data{
 		ControlPlane: ControlPlane{
 			URL:               "https://app.iamly.example",
@@ -76,10 +76,10 @@ func TestEverySaveUsesFreshDEKAndNonce(t *testing.T) {
 	second := filepath.Join(directory, "second.vault")
 	wrapper := memoryWrapper{key: 0xa5}
 	data := Empty()
-	if err := NewStore(first, "projects/p/locations/l/keyRings/r/cryptoKeys/k", wrapper).Save(context.Background(), data); err != nil {
+	if err := NewStore(first, ProviderGoogleKMS, "projects/p/locations/l/keyRings/r/cryptoKeys/k", wrapper).Save(context.Background(), data); err != nil {
 		t.Fatal(err)
 	}
-	if err := NewStore(second, "projects/p/locations/l/keyRings/r/cryptoKeys/k", wrapper).Save(context.Background(), data); err != nil {
+	if err := NewStore(second, ProviderGoogleKMS, "projects/p/locations/l/keyRings/r/cryptoKeys/k", wrapper).Save(context.Background(), data); err != nil {
 		t.Fatal(err)
 	}
 	a, _ := os.ReadFile(first)
@@ -91,7 +91,7 @@ func TestEverySaveUsesFreshDEKAndNonce(t *testing.T) {
 
 func TestTamperingIsRejected(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "vault.bin")
-	store := NewStore(path, "projects/p/locations/l/keyRings/r/cryptoKeys/k", memoryWrapper{key: 7})
+	store := NewStore(path, ProviderGoogleKMS, "projects/p/locations/l/keyRings/r/cryptoKeys/k", memoryWrapper{key: 7})
 	if err := store.Save(context.Background(), Empty()); err != nil {
 		t.Fatal(err)
 	}
@@ -109,7 +109,7 @@ func TestTamperingIsRejected(t *testing.T) {
 
 func TestMalformedNonceIsRejectedWithoutPanicking(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "vault.bin")
-	store := NewStore(path, "projects/p/locations/l/keyRings/r/cryptoKeys/k", memoryWrapper{key: 7})
+	store := NewStore(path, ProviderGoogleKMS, "projects/p/locations/l/keyRings/r/cryptoKeys/k", memoryWrapper{key: 7})
 	if err := store.Save(context.Background(), Empty()); err != nil {
 		t.Fatal(err)
 	}
@@ -140,7 +140,7 @@ func TestSaveSecuresExistingVaultDirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 	path := filepath.Join(directory, "vault.bin")
-	if err := NewStore(path, "projects/p/locations/l/keyRings/r/cryptoKeys/k", memoryWrapper{key: 7}).Save(context.Background(), Empty()); err != nil {
+	if err := NewStore(path, ProviderGoogleKMS, "projects/p/locations/l/keyRings/r/cryptoKeys/k", memoryWrapper{key: 7}).Save(context.Background(), Empty()); err != nil {
 		t.Fatal(err)
 	}
 	info, err := os.Stat(directory)
@@ -155,5 +155,24 @@ func TestSaveSecuresExistingVaultDirectory(t *testing.T) {
 func TestKMSSelfTestWrapsAndUnwraps(t *testing.T) {
 	if err := SelfTest(context.Background(), "key", memoryWrapper{key: 0x5a}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestVaultProviderIsAuthenticatedAndMustMatchWrapperSelection(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "vault.bin")
+	keyName := "projects/p/locations/l/keyRings/r/cryptoKeys/k"
+	wrapper := memoryWrapper{key: 0x5a}
+	if err := NewStore(path, ProviderGoogleKMS, keyName, wrapper).Save(context.Background(), Empty()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := NewStore(path, ProviderAWSKMS, keyName, wrapper).Load(context.Background()); err == nil {
+		t.Fatal("vault opened with a different provider")
+	}
+	metadata, err := ReadMetadata(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if metadata.Provider != ProviderGoogleKMS {
+		t.Fatalf("provider = %q", metadata.Provider)
 	}
 }

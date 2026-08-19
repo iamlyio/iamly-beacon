@@ -1,15 +1,128 @@
 # iamly.io Beacon
 
+[![CI](https://github.com/iamlyio/iamly-beacon/actions/workflows/ci.yml/badge.svg)](https://github.com/iamlyio/iamly-beacon/actions/workflows/ci.yml)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+
 Beacon is iamly.io's customer-hosted collector. It gathers and enriches identity, account, access, and billing data inside the customer's infrastructure, then sends minimized observations to iamly.io. Vendor credentials never leave the customer environment.
 
 [Beacon repository](https://github.com/iamlyio/iamly-beacon) ·
 [Control plane repository](https://github.com/iamlyio/iamly-app) ·
 [Product domain](https://iamly.io)
 
-Use `https://beacon.iamly.io` as the production control-plane URL. Each signed
+Beacon uses `https://beacon.iamly.io` as its production control-plane URL. Each signed
 poll reports the host name, private interface addresses, and Beacon version;
 iamly.io observes the public source address at its trusted reverse proxy. No
 vendor credential or signing private key is included.
+
+## Download and install
+
+[GitHub Releases](https://github.com/iamlyio/iamly-beacon/releases/latest)
+provides ready-to-run binaries with no language runtime to install. Choose the
+archive matching the machine that will keep your application credentials:
+
+| Operating system | AMD64 / Intel | ARM64 / Apple silicon |
+| --- | --- | --- |
+| Linux | `iamly-beacon_linux_amd64.tar.gz` | `iamly-beacon_linux_arm64.tar.gz` |
+| macOS | `iamly-beacon_darwin_amd64.tar.gz` | `iamly-beacon_darwin_arm64.tar.gz` |
+| Windows | `iamly-beacon_windows_amd64.zip` | `iamly-beacon_windows_arm64.zip` |
+
+### Linux
+
+For a typical Intel/AMD Linux host:
+
+```sh
+archive=iamly-beacon_linux_amd64.tar.gz
+base=https://github.com/iamlyio/iamly-beacon/releases/latest/download
+curl --fail --location --remote-name "$base/$archive"
+curl --fail --location --remote-name "$base/SHA256SUMS"
+grep " $archive\$" SHA256SUMS > SHA256SUMS.selected
+sha256sum --check SHA256SUMS.selected
+tar -xzf "$archive"
+install -m 0755 beacon "$HOME/.local/bin/beacon"
+beacon version
+```
+
+Use `iamly-beacon_linux_arm64.tar.gz` instead on an ARM64 host. Ensure
+`$HOME/.local/bin` is in `PATH`.
+
+### macOS
+
+Use `darwin_arm64` on Apple silicon or `darwin_amd64` on an Intel Mac:
+
+```sh
+archive=iamly-beacon_darwin_arm64.tar.gz
+base=https://github.com/iamlyio/iamly-beacon/releases/latest/download
+curl --fail --location --remote-name "$base/$archive"
+curl --fail --location --remote-name "$base/SHA256SUMS"
+grep " $archive\$" SHA256SUMS > SHA256SUMS.selected
+shasum -a 256 -c SHA256SUMS.selected
+tar -xzf "$archive"
+mkdir -p "$HOME/.local/bin"
+install -m 0755 beacon "$HOME/.local/bin/beacon"
+"$HOME/.local/bin/beacon" version
+```
+
+### Windows
+
+In PowerShell, use `windows_amd64` on most PCs or `windows_arm64` on Windows on
+ARM:
+
+```powershell
+$Archive = "iamly-beacon_windows_amd64.zip"
+$Base = "https://github.com/iamlyio/iamly-beacon/releases/latest/download"
+Invoke-WebRequest "$Base/$Archive" -OutFile $Archive
+Invoke-WebRequest "$Base/SHA256SUMS" -OutFile "SHA256SUMS"
+$Expected = ((Select-String -Path "SHA256SUMS" -Pattern " $Archive$").Line -split "\s+")[0]
+$Actual = (Get-FileHash -Algorithm SHA256 $Archive).Hash.ToLowerInvariant()
+if ($Actual -ne $Expected) { throw "Beacon checksum verification failed" }
+$InstallDir = Join-Path $env:LOCALAPPDATA "iamly\bin"
+New-Item -ItemType Directory -Force $InstallDir | Out-Null
+Expand-Archive -Force $Archive $InstallDir
+& (Join-Path $InstallDir "beacon.exe") version
+```
+
+Add `%LOCALAPPDATA%\iamly\bin` to the user `PATH` if you want to run `beacon`
+without its full path.
+
+Release artifacts also include a CycloneDX SBOM and GitHub build provenance.
+With the GitHub CLI installed, verify provenance before installation:
+
+```sh
+gh attestation verify "$archive" --repo iamlyio/iamly-beacon
+```
+
+After installation, continue with [Quick start](#quick-start). Beacon needs
+outbound HTTPS access but no inbound port.
+
+## Quick start
+
+1. In iamly.io, open **Integrations → Beacon**, create an enrollment token, and
+   keep the single-use token available.
+2. Choose local key storage, Google Cloud KMS, or AWS KMS for the encrypted
+   vault. Local storage is the simplest default; cloud KMS keeps the wrapping
+   key outside the Beacon host.
+3. Start the guided setup, then enter the Beacon name, enrollment token, and
+   `https://beacon.iamly.io` when prompted:
+
+   ```sh
+   beacon configure --local
+   ```
+
+   Use `beacon configure --google-kms` or `beacon configure --aws-kms` to
+   select a cloud key instead.
+
+4. Add one or more read-only integrations, then confirm the non-secret status:
+
+   ```sh
+   beacon secret set google
+   beacon status
+   ```
+
+5. Start the outbound worker with `beacon run`, or install the included
+   [systemd user service](deploy/beacon.service) on Linux.
+
+Beacon requires no inbound port. Keep its vault directory private, and never
+paste integration credentials into issues, logs, or command-line arguments.
 
 ## Why Go
 
@@ -24,8 +137,10 @@ version from `VERSION`; `make build` stamps that value into `beacon version`.
 - `configure`, `secret`, `status`, `run`, and `version` commands.
 - Masked in-TUI entry for integration credentials; secret values are never CLI arguments.
 - Local XChaCha20-Poly1305 vault using a new data key and nonce per write.
-- GCP Cloud KMS envelope encryption with CRC32C integrity validation.
-- Application Default Credentials and Workload Identity support—no GCP key file required.
+- Local, Google Cloud KMS, and AWS KMS vault-key providers with authenticated
+  envelope encryption and automatic provider discovery for existing vaults.
+- Application Default Credentials, AWS's default credential chain, and cloud
+  workload identities—no long-lived cloud credential file required.
 - Atomic vault writes with restrictive local permissions.
 - HTTPS enforcement for non-local iamly.io control planes.
 - Locally generated Ed25519 Beacon identity; only the public key is enrolled with iamly.io.
@@ -127,7 +242,30 @@ the read-only employee roster endpoint. It intentionally does not use the
 optional company directory because BambooHR excludes inactive and former
 employees from that directory.
 
-## GCP prerequisites
+## Vault storage
+
+Beacon encrypts every vault write locally with a fresh random data-encryption
+key. Choose exactly one backend to protect that key:
+
+```sh
+beacon configure --local
+beacon configure --google-kms
+beacon configure --aws-kms
+```
+
+New vaults default to `--local` when no backend flag is supplied. Existing
+vaults remember their provider, so `beacon status`, `beacon run`, and secret
+commands do not need a backend flag. Running `configure` with a different
+explicit backend decrypts the current vault and re-wraps it with the selected
+provider after a successful self-test.
+
+Local mode creates `local.key` beside `vault.bin`. Both remain on the Beacon
+host in a `0700` directory with `0600` files. Back up both files together and
+protect the backup: filesystem access to both is sufficient to decrypt the
+vault. Local mode is convenient for development and single-host deployments;
+cloud KMS gives stronger separation for production.
+
+### Google Cloud KMS prerequisites
 
 Create or select a symmetric `ENCRYPT_DECRYPT` CryptoKey, then grant Beacon's workload identity the narrow role below on that key:
 
@@ -142,6 +280,25 @@ projects/PROJECT/locations/LOCATION/keyRings/RING/cryptoKeys/KEY
 ```
 
 Authentication uses Google Application Default Credentials. On GCP, prefer an attached service account through Workload Identity. For local development, use `gcloud auth application-default login`.
+
+Start setup with `beacon configure --google-kms`. The key must be a full
+CryptoKey resource such as
+`projects/PROJECT/locations/LOCATION/keyRings/RING/cryptoKeys/KEY`.
+
+### AWS KMS prerequisites
+
+Use a symmetric `ENCRYPT_DECRYPT` AWS KMS key. Grant Beacon only `kms:Encrypt`
+and `kms:Decrypt` on that key, then start setup with:
+
+```sh
+beacon configure --aws-kms
+```
+
+Beacon accepts a key ARN, key ID, alias ARN, or `alias/name`. A key ARN carries
+its AWS Region with it; otherwise configure `AWS_REGION`. Authentication uses
+the AWS SDK default credential chain, including environment, shared config,
+ECS task roles, and EC2 instance roles. AWS KMS requests bind the key identifier
+as encryption context.
 
 ## GitHub collection
 
@@ -206,9 +363,10 @@ Set `BEACON_HOME` to choose a local runtime directory. Otherwise Beacon uses the
 
 ```text
 beacon                 Open the interactive terminal interface
-beacon configure       Configure GCP KMS and enroll through the interactive TUI
-beacon configure --kms-key KEY --control-plane URL --name NAME --enrollment-token-stdin
-                       Configure noninteractively, reading the one-time token from stdin
+beacon configure [--local | --google-kms | --aws-kms]
+                       Configure interactively; new vaults default to local storage
+beacon configure [STORAGE] --control-plane URL --name NAME [--kms-key KEY] --enrollment-token-stdin
+                       Configure noninteractively; cloud providers require --kms-key
 beacon secret set [integration]
                        Guided setup for any supported collector;
                        omit integration for generic single-secret entry
@@ -234,3 +392,14 @@ After any `beacon secret set ...` command, restart this service to reload the
 vault and advertise the updated collector list.
 
 See [the architecture](docs/ARCHITECTURE.md) for the SaaS/Beacon trust boundary.
+
+## Project policy
+
+- [Security policy and private vulnerability reporting](SECURITY.md)
+- [Contributing guide](CONTRIBUTING.md)
+- [Support guidance](SUPPORT.md)
+- [Release process](docs/RELEASING.md)
+- [Public release checklist](docs/PUBLIC_RELEASE_CHECKLIST.md)
+- [Changelog](CHANGELOG.md)
+
+iamly Beacon is available under the [Apache License 2.0](LICENSE).

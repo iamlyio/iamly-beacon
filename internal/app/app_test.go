@@ -211,6 +211,15 @@ type testEnroller struct {
 	calls int
 }
 
+type staticEnroller struct{}
+
+func (staticEnroller) Enroll(_ context.Context, _, token, name, publicKey, _ string) (enrollment.Result, error) {
+	if token == "" || name == "" || publicKey == "" {
+		return enrollment.Result{}, errors.New("missing enrollment input")
+	}
+	return enrollment.Result{BeaconID: "bcn_abcdefghijklmnopqrstuv", BeaconName: name}, nil
+}
+
 func (e *testEnroller) Enroll(_ context.Context, controlPlane, token, name, publicKey, version string) (enrollment.Result, error) {
 	e.calls++
 	if !e.kms.selfTested {
@@ -255,13 +264,60 @@ func TestConfigureEnrollsAfterKMSSelfTestAndPersistsIdentityWithoutToken(t *test
 	if enroller.calls != 1 || kms.wrapCalls != 2 {
 		t.Fatalf("enroll calls=%d wrap calls=%d, want 1 and 2", enroller.calls, kms.wrapCalls)
 	}
-	data, err := vault.NewStore(path, testKeyName, kms).Load(context.Background())
+	data, err := vault.NewStore(path, vault.ProviderGoogleKMS, testKeyName, kms).Load(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if data.ControlPlane.BeaconID != "bcn_abcdefghijklmnopqrstuv" || data.ControlPlane.BeaconName != "Production" ||
 		data.ControlPlane.SigningPrivateKey != identity.PrivateKey || data.ControlPlane.SigningPublicKey != identity.PublicKey {
 		t.Fatalf("stored identity = %#v", data.ControlPlane)
+	}
+}
+
+func TestConfigureLocalCreatesUsableRestrictedVault(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("BEACON_HOME", home)
+	application, err := New("v1.2.3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	application.stdin = bytes.NewBufferString(testToken() + "\n")
+	application.enroller = staticEnroller{}
+	if err := application.configure(context.Background(), []string{
+		"--local",
+		"--control-plane", "https://control.example",
+		"--name", "Development",
+		"--enrollment-token-stdin",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	metadata, err := vault.ReadMetadata(application.paths.Vault)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if metadata.Provider != vault.ProviderLocal || metadata.KeyName != vault.LocalKeyName {
+		t.Fatalf("metadata = %#v", metadata)
+	}
+	localKey, err := vault.OpenLocalKey(application.paths.LocalKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer localKey.Close()
+	data, err := vault.NewStore(application.paths.Vault, metadata.Provider, metadata.KeyName, localKey).Load(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if data.ControlPlane.BeaconID == "" || data.ControlPlane.SigningPrivateKey == "" {
+		t.Fatalf("local vault identity = %#v", data.ControlPlane)
+	}
+	for _, path := range []string{application.paths.Vault, application.paths.LocalKey} {
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if info.Mode().Perm() != 0o600 {
+			t.Fatalf("%s mode = %o, want 600", path, info.Mode().Perm())
+		}
 	}
 }
 
@@ -279,7 +335,7 @@ func TestConfigureWithBlankTokenRetainsExistingIdentity(t *testing.T) {
 		SigningPrivateKey: identity.PrivateKey,
 		SigningPublicKey:  identity.PublicKey,
 	}}
-	if err := vault.NewStore(path, testKeyName, kms).Save(context.Background(), existing); err != nil {
+	if err := vault.NewStore(path, vault.ProviderGoogleKMS, testKeyName, kms).Save(context.Background(), existing); err != nil {
 		t.Fatal(err)
 	}
 	enroller := &testEnroller{kms: kms}
@@ -304,7 +360,7 @@ func TestConfigureWithBlankTokenRetainsExistingIdentity(t *testing.T) {
 	if enroller.calls != 0 {
 		t.Fatalf("blank-token reconfiguration enrolled %d times", enroller.calls)
 	}
-	data, err := vault.NewStore(path, testKeyName, kms).Load(context.Background())
+	data, err := vault.NewStore(path, vault.ProviderGoogleKMS, testKeyName, kms).Load(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -358,7 +414,7 @@ func importTestApp(t *testing.T, input io.Reader, output io.Writer) (*App, strin
 	wrapper := importKMS{}
 	initial := vault.Empty()
 	initial.Integrations["existing"] = map[string]string{"token": "keep-me"}
-	if err := vault.NewStore(path, testKeyName, wrapper).Save(context.Background(), initial); err != nil {
+	if err := vault.NewStore(path, vault.ProviderGoogleKMS, testKeyName, wrapper).Save(context.Background(), initial); err != nil {
 		t.Fatal(err)
 	}
 	return &App{
@@ -393,7 +449,7 @@ func TestCredentialImportMergesAtomicallyWithoutRenderingValues(t *testing.T) {
 	if !strings.Contains(output.String(), "3 encrypted credentials across 2 integrations") {
 		t.Fatalf("unexpected import output: %q", output.String())
 	}
-	data, err := vault.NewStore(path, testKeyName, wrapper).Load(context.Background())
+	data, err := vault.NewStore(path, vault.ProviderGoogleKMS, testKeyName, wrapper).Load(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -462,5 +518,97 @@ func TestSecretListIsSortedAndNamesOnly(t *testing.T) {
 	}
 	if strings.Contains(output.String(), "slack-secret") || strings.Contains(output.String(), "github-secret") {
 		t.Fatal("secret list exposed values")
+	}
+}
+
+func TestConfigureStorageSelectors(t *testing.T) {
+	tests := []struct {
+		name             string
+		arguments        []string
+		provider         vault.Provider
+		providerExplicit bool
+		nonInteractive   bool
+		wantError        bool
+	}{
+		{name: "new default stays interactive", arguments: nil},
+		{name: "local", arguments: []string{"--local"}, provider: vault.ProviderLocal, providerExplicit: true},
+		{name: "google", arguments: []string{"--google-kms"}, provider: vault.ProviderGoogleKMS, providerExplicit: true},
+		{name: "aws", arguments: []string{"--aws-kms"}, provider: vault.ProviderAWSKMS, providerExplicit: true},
+		{name: "legacy kms key infers google", arguments: []string{"--kms-key", testKeyName}, provider: vault.ProviderGoogleKMS, providerExplicit: true, nonInteractive: true},
+		{name: "conflict", arguments: []string{"--local", "--aws-kms"}, wantError: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got, err := parseConfigureOptions(test.arguments)
+			if test.wantError {
+				if err == nil {
+					t.Fatal("conflicting selectors succeeded")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.provider != test.provider || got.providerExplicit != test.providerExplicit || got.nonInteractive != test.nonInteractive {
+				t.Fatalf("options = %#v", got)
+			}
+		})
+	}
+}
+
+func TestConfigureCanRewrapExistingVaultToLocalStorage(t *testing.T) {
+	identity, err := enrollment.GenerateIdentity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "vault.bin")
+	wrapper := importKMS{}
+	existing := vault.Data{ControlPlane: vault.ControlPlane{
+		URL:               "https://old.example",
+		BeaconID:          "bcn_bcdefghijklmnopqrstuvw",
+		BeaconName:        "Production",
+		SigningPrivateKey: identity.PrivateKey,
+		SigningPublicKey:  identity.PublicKey,
+	}}
+	if err := vault.NewStore(path, vault.ProviderGoogleKMS, testKeyName, wrapper).Save(context.Background(), existing); err != nil {
+		t.Fatal(err)
+	}
+	var opened []vault.Provider
+	var localCreate bool
+	application := &App{
+		version: "v1.2.3",
+		paths:   config.Paths{Vault: path, LocalKey: filepath.Join(filepath.Dir(path), vault.LocalKeyName)},
+		stdin:   bytes.NewReader(nil),
+		newKeyWrapper: func(_ context.Context, provider vault.Provider, _ string, create bool) (kmsWrapper, error) {
+			opened = append(opened, provider)
+			if provider == vault.ProviderLocal {
+				localCreate = create
+			}
+			return wrapper, nil
+		},
+	}
+	if err := application.configure(context.Background(), []string{
+		"--local",
+		"--control-plane", "https://new.example",
+		"--name", "Production",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	metadata, err := vault.ReadMetadata(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if metadata.Provider != vault.ProviderLocal || metadata.KeyName != vault.LocalKeyName {
+		t.Fatalf("metadata = %#v", metadata)
+	}
+	data, err := vault.NewStore(path, vault.ProviderLocal, vault.LocalKeyName, wrapper).Load(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if data.ControlPlane.URL != "https://new.example" || data.ControlPlane.SigningPrivateKey != existing.ControlPlane.SigningPrivateKey {
+		t.Fatalf("migrated identity = %#v", data.ControlPlane)
+	}
+	if len(opened) != 2 || opened[0] != vault.ProviderGoogleKMS || opened[1] != vault.ProviderLocal || !localCreate {
+		t.Fatalf("opened providers = %#v, local create = %v", opened, localCreate)
 	}
 }

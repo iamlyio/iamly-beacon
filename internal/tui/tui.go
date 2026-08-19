@@ -42,7 +42,7 @@ var menuItems = []struct {
 	name, detail string
 	action       Action
 }{
-	{"Configure", "Connect iamly.io and protect secrets with GCP KMS", Configure},
+	{"Configure", "Connect iamly.io and choose encrypted secret storage", Configure},
 	{"Store integration secret", "Enter a vendor credential using masked input", Secrets},
 	{"Status", "Inspect the local Beacon without revealing secrets", Status},
 	{"Run", "Wait for review collection jobs", Run},
@@ -96,6 +96,7 @@ func (m menuModel) View() string {
 }
 
 type SetupResult struct {
+	Provider        vault.Provider
 	KeyName         string
 	Data            vault.Data
 	EnrollmentToken string
@@ -163,7 +164,7 @@ var guidedSecretSpecs = map[string]guidedSecretSpec{
 		fields: []guidedSecretField{
 			{name: "clientEmail", label: "Service-account client email", placeholder: "beacon@project.iam.gserviceaccount.com"},
 			{name: "resourceScope", label: "Resource scope", placeholder: "organizations/123456789"},
-			{name: "privateKey", label: "Private key (use \\n for line breaks)", placeholder: "-----BEGIN PRIVATE KEY-----\\n…", secret: true},
+			{name: "privateKey", label: "Private key (use \\n for line breaks)", placeholder: "-----BEGIN PRIVATE KEY-----\\n…", secret: true}, // gitleaks:allow -- incomplete UI placeholder
 		},
 	},
 	"github": {
@@ -384,11 +385,20 @@ func (m secretModel) View() string {
 }
 
 func Setup(initial SetupResult) (SetupResult, bool, error) {
-	labels := []string{"GCP KMS CryptoKey resource", "iamly.io control-plane URL", "Beacon name", "Enrollment token"}
-	values := []string{initial.KeyName, initial.Data.ControlPlane.URL, initial.Data.ControlPlane.BeaconName, ""}
-	placeholders := []string{
-		"projects/acme/locations/global/keyRings/iamly/cryptoKeys/beacon-vault",
-		"https://beacon.iamly.io", "Production Beacon", "paste token from iamly.io (blank keeps current identity)",
+	labels := []string{"iamly.io control-plane URL", "Beacon name", "Enrollment token"}
+	values := []string{initial.Data.ControlPlane.URL, initial.Data.ControlPlane.BeaconName, ""}
+	placeholders := []string{"https://beacon.iamly.io", "Production Beacon", "paste token from iamly.io (blank keeps current identity)"}
+	description := "The vault is encrypted with a local key stored beside it with restrictive permissions."
+	if initial.Provider == vault.ProviderGoogleKMS {
+		labels = append([]string{"Google Cloud KMS CryptoKey resource"}, labels...)
+		values = append([]string{initial.KeyName}, values...)
+		placeholders = append([]string{"projects/acme/locations/global/keyRings/iamly/cryptoKeys/beacon-vault"}, placeholders...)
+		description = "The vault is encrypted locally. Google Cloud KMS wraps only its data-encryption key."
+	} else if initial.Provider == vault.ProviderAWSKMS {
+		labels = append([]string{"AWS KMS key ARN, key ID, or alias"}, labels...)
+		values = append([]string{initial.KeyName}, values...)
+		placeholders = append([]string{"arn:aws:kms:us-east-1:123456789012:key/…"}, placeholders...)
+		description = "The vault is encrypted locally. AWS KMS wraps only its data-encryption key."
 	}
 	inputs := make([]textinput.Model, len(labels))
 	for index := range labels {
@@ -398,7 +408,7 @@ func Setup(initial SetupResult) (SetupResult, bool, error) {
 		input.SetValue(values[index])
 		input.CharLimit = 512
 		input.Width = 76
-		if index == 3 {
+		if index == len(labels)-1 {
 			input.EchoMode = textinput.EchoPassword
 			input.EchoCharacter = '•'
 		}
@@ -408,7 +418,7 @@ func Setup(initial SetupResult) (SetupResult, bool, error) {
 	model := secretModel{
 		inputs:      inputs,
 		title:       "Configure Beacon",
-		description: "The vault is encrypted locally. GCP KMS only wraps its encryption key.",
+		description: description,
 		action:      "configure",
 	}
 	result, err := tea.NewProgram(model, tea.WithAltScreen()).Run()
@@ -423,11 +433,18 @@ func Setup(initial SetupResult) (SetupResult, bool, error) {
 	if data.Integrations == nil {
 		data.Integrations = make(map[string]map[string]string)
 	}
-	data.ControlPlane.URL = strings.TrimRight(strings.TrimSpace(final.inputs[1].Value()), "/")
-	data.ControlPlane.BeaconName = strings.TrimSpace(final.inputs[2].Value())
+	keyOffset := 0
+	keyName := vault.LocalKeyName
+	if initial.Provider != vault.ProviderLocal {
+		keyOffset = 1
+		keyName = strings.TrimSpace(final.inputs[0].Value())
+	}
+	data.ControlPlane.URL = strings.TrimRight(strings.TrimSpace(final.inputs[keyOffset].Value()), "/")
+	data.ControlPlane.BeaconName = strings.TrimSpace(final.inputs[keyOffset+1].Value())
 	return SetupResult{
-		KeyName:         strings.TrimSpace(final.inputs[0].Value()),
+		Provider:        initial.Provider,
+		KeyName:         keyName,
 		Data:            data,
-		EnrollmentToken: strings.TrimSpace(final.inputs[3].Value()),
+		EnrollmentToken: strings.TrimSpace(final.inputs[keyOffset+2].Value()),
 	}, true, nil
 }

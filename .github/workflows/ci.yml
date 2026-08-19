@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Verify formatting, modules, vet, and tests
+        run: make check
+
+      - name: Scan Git history and working tree for secrets
+        run: |
+          go run github.com/zricethezav/gitleaks/v8@v8.30.1 git . \
+            --log-opts=--all --no-banner --redact \
+            --gitleaks-ignore-path=.gitleaksignore
+          go run github.com/zricethezav/gitleaks/v8@v8.30.1 dir . \
+            --no-banner --redact --gitleaks-ignore-path=.gitleaksignore
+
+      - name: Scan reachable Go vulnerabilities
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
+
+      - name: Build release snapshot
+        run: make release-snapshot
+
+      - name: Verify release snapshot
+        run: make verify-release
+
+      - name: Scan release artifacts for secrets
+        run: |
+          go run github.com/zricethezav/gitleaks/v8@v8.30.1 dir dist \
+            --max-archive-depth=2 --no-banner --redact

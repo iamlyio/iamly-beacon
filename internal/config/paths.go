@@ -7,8 +7,9 @@ import (
 )
 
 type Paths struct {
-	Home  string
-	Vault string
+	Home     string
+	Vault    string
+	LocalKey string
 }
 
 func ResolvePaths() (Paths, error) {
@@ -24,5 +25,9 @@ func ResolvePaths() (Paths, error) {
 	if err != nil {
 		return Paths{}, fmt.Errorf("resolve Beacon home: %w", err)
 	}
-	return Paths{Home: abs, Vault: filepath.Join(abs, "vault.bin")}, nil
+	return Paths{
+		Home:     abs,
+		Vault:    filepath.Join(abs, "vault.bin"),
+		LocalKey: filepath.Join(abs, "local.key"),
+	}, nil
 }

@@ -16,6 +16,14 @@ import (
 
 const formatVersion = 1
 
+type Provider string
+
+const (
+	ProviderLocal     Provider = "local"
+	ProviderGoogleKMS Provider = "gcp-kms"
+	ProviderAWSKMS    Provider = "aws-kms"
+)
+
 const (
 	maxVaultFileBytes      = 128 << 20
 	maxVaultPlaintextBytes = 80 << 20
@@ -34,14 +42,15 @@ type envelope struct {
 }
 
 type Store struct {
-	path    string
-	keyName string
-	wrapper KeyWrapper
+	path     string
+	provider Provider
+	keyName  string
+	wrapper  KeyWrapper
 }
 
 type Metadata struct {
 	Version  int
-	Provider string
+	Provider Provider
 	KeyName  string
 }
 
@@ -50,11 +59,11 @@ func ReadMetadata(path string) (Metadata, error) {
 	if err != nil {
 		return Metadata{}, err
 	}
-	return Metadata{Version: file.Version, Provider: file.Provider, KeyName: file.KeyName}, nil
+	return Metadata{Version: file.Version, Provider: Provider(file.Provider), KeyName: file.KeyName}, nil
 }
 
-func NewStore(path, keyName string, wrapper KeyWrapper) *Store {
-	return &Store{path: path, keyName: keyName, wrapper: wrapper}
+func NewStore(path string, provider Provider, keyName string, wrapper KeyWrapper) *Store {
+	return &Store{path: path, provider: provider, keyName: keyName, wrapper: wrapper}
 }
 
 func (s *Store) Save(ctx context.Context, data Data) error {
@@ -86,9 +95,9 @@ func (s *Store) Save(ctx context.Context, data Data) error {
 		return err
 	}
 
-	metadata := authenticatedMetadata(formatVersion, "gcp-kms", s.keyName)
+	metadata := authenticatedMetadata(formatVersion, string(s.provider), s.keyName)
 	file := envelope{
-		Version: formatVersion, Provider: "gcp-kms", KeyName: s.keyName,
+		Version: formatVersion, Provider: string(s.provider), KeyName: s.keyName,
 		WrappedDEK: wrappedDEK, Nonce: nonce,
 		Ciphertext: cipher.Seal(nil, nonce, plaintext, metadata),
 	}
@@ -104,8 +113,8 @@ func (s *Store) Load(ctx context.Context) (Data, error) {
 	if err != nil {
 		return Data{}, err
 	}
-	if file.KeyName != s.keyName {
-		return Data{}, errors.New("vault key metadata changed while opening the vault")
+	if Provider(file.Provider) != s.provider || file.KeyName != s.keyName {
+		return Data{}, errors.New("vault provider or key metadata changed while opening the vault")
 	}
 	dek, err := s.wrapper.Unwrap(ctx, file.KeyName, file.WrappedDEK)
 	if err != nil {
@@ -114,7 +123,7 @@ func (s *Store) Load(ctx context.Context) (Data, error) {
 	defer wipe(dek)
 	cipher, err := chacha20poly1305.NewX(dek)
 	if err != nil {
-		return Data{}, errors.New("GCP KMS returned an invalid vault key")
+		return Data{}, errors.New("vault key provider returned an invalid data key")
 	}
 	metadata := authenticatedMetadata(file.Version, file.Provider, file.KeyName)
 	plaintext, err := cipher.Open(nil, file.Nonce, file.Ciphertext, metadata)
@@ -156,7 +165,10 @@ func readEnvelope(path string) (envelope, error) {
 	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
 		return envelope{}, errors.New("vault format is invalid")
 	}
-	if file.Version != formatVersion || file.Provider != "gcp-kms" || file.KeyName == "" {
+	provider := Provider(file.Provider)
+	if file.Version != formatVersion ||
+		(provider != ProviderLocal && provider != ProviderGoogleKMS && provider != ProviderAWSKMS) ||
+		file.KeyName == "" {
 		return envelope{}, errors.New("vault format or key provider is unsupported")
 	}
 	if len(file.WrappedDEK) == 0 || len(file.WrappedDEK) > maxWrappedKeyBytes ||

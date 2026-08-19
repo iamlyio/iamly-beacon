@@ -26,7 +26,7 @@ import (
 	"github.com/iamlyio/iamly-beacon/internal/vault"
 )
 
-var keyNamePattern = regexp.MustCompile(`^projects/[^/]+/locations/[^/]+/keyRings/[^/]+/cryptoKeys/[^/]+$`)
+var googleKeyNamePattern = regexp.MustCompile(`^projects/[^/]+/locations/[^/]+/keyRings/[^/]+/cryptoKeys/[^/]+$`)
 var versionPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$`)
 var integrationNamePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,63}$`)
 var credentialNamePattern = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_-]{0,63}$`)
@@ -44,6 +44,7 @@ type App struct {
 	stdin            io.Reader
 	stdout           io.Writer
 	newKMS           func(context.Context) (kmsWrapper, error)
+	newKeyWrapper    func(context.Context, vault.Provider, string, bool) (kmsWrapper, error)
 	enroller         beaconEnroller
 	generateIdentity func() (enrollment.Identity, error)
 }
@@ -70,9 +71,36 @@ func New(version string) (*App, error) {
 		newKMS: func(ctx context.Context) (kmsWrapper, error) {
 			return vault.NewGCPKMS(ctx)
 		},
+		newKeyWrapper: func(ctx context.Context, provider vault.Provider, keyName string, create bool) (kmsWrapper, error) {
+			switch provider {
+			case vault.ProviderLocal:
+				if create {
+					return vault.OpenOrCreateLocalKey(paths.LocalKey)
+				}
+				return vault.OpenLocalKey(paths.LocalKey)
+			case vault.ProviderGoogleKMS:
+				return vault.NewGCPKMS(ctx)
+			case vault.ProviderAWSKMS:
+				return vault.NewAWSKMS(ctx, keyName)
+			default:
+				return nil, fmt.Errorf("unsupported vault key provider %q", provider)
+			}
+		},
 		enroller:         enrollment.Client{},
 		generateIdentity: enrollment.GenerateIdentity,
 	}, nil
+}
+
+func (a *App) keyWrapper(ctx context.Context, provider vault.Provider, keyName string, create bool) (kmsWrapper, error) {
+	if a.newKeyWrapper != nil {
+		return a.newKeyWrapper(ctx, provider, keyName, create)
+	}
+	// Retained for tests and compatibility with applications embedding the
+	// pre-provider App shape. Those callers can only open Google KMS vaults.
+	if provider == vault.ProviderGoogleKMS && a.newKMS != nil {
+		return a.newKMS(ctx)
+	}
+	return nil, fmt.Errorf("vault key provider %q is not configured", provider)
 }
 
 func (a *App) Execute(ctx context.Context, arguments []string) error {
@@ -185,7 +213,7 @@ func (a *App) storeSecret(ctx context.Context, arguments []string) error {
 	for name, value := range values {
 		data.Integrations[integration][name] = value
 	}
-	if err := vault.NewStore(a.paths.Vault, metadata.KeyName, kms).Save(ctx, data); err != nil {
+	if err := vault.NewStore(a.paths.Vault, metadata.Provider, metadata.KeyName, kms).Save(ctx, data); err != nil {
 		return err
 	}
 	if len(arguments) == 1 {
@@ -288,7 +316,7 @@ func (a *App) importSecrets(ctx context.Context, arguments []string) error {
 		}
 		data.Integrations[secret.Integration][secret.Name] = secret.Value
 	}
-	if err := vault.NewStore(a.paths.Vault, metadata.KeyName, kms).Save(ctx, data); err != nil {
+	if err := vault.NewStore(a.paths.Vault, metadata.Provider, metadata.KeyName, kms).Save(ctx, data); err != nil {
 		return err
 	}
 	fmt.Fprintf(a.output(), "✓ Imported %d encrypted credentials across %d integrations\n", len(payload.Secrets), len(integrations))
@@ -345,11 +373,11 @@ func (a *App) openVault(ctx context.Context) (vault.Metadata, vault.Data, kmsWra
 	if err != nil {
 		return vault.Metadata{}, vault.Data{}, nil, err
 	}
-	kms, err := a.newKMS(ctx)
+	kms, err := a.keyWrapper(ctx, metadata.Provider, metadata.KeyName, false)
 	if err != nil {
 		return vault.Metadata{}, vault.Data{}, nil, err
 	}
-	data, err := vault.NewStore(a.paths.Vault, metadata.KeyName, kms).Load(ctx)
+	data, err := vault.NewStore(a.paths.Vault, metadata.Provider, metadata.KeyName, kms).Load(ctx)
 	if err != nil {
 		kms.Close()
 		return vault.Metadata{}, vault.Data{}, nil, err
@@ -358,34 +386,52 @@ func (a *App) openVault(ctx context.Context) (vault.Metadata, vault.Data, kmsWra
 }
 
 func (a *App) configure(ctx context.Context, arguments []string) error {
+	options, err := parseConfigureOptions(arguments)
+	if err != nil {
+		return err
+	}
 	initial := tui.SetupResult{Data: vault.Empty()}
 	hasVault := false
 	metadata, err := vault.ReadMetadata(a.paths.Vault)
 	if err == nil {
 		hasVault = true
+		initial.Provider = metadata.Provider
 		initial.KeyName = metadata.KeyName
-		kms, openErr := a.newKMS(ctx)
+		kms, openErr := a.keyWrapper(ctx, metadata.Provider, metadata.KeyName, false)
 		if openErr != nil {
 			return openErr
 		}
 		defer kms.Close()
-		initial.Data, err = vault.NewStore(a.paths.Vault, metadata.KeyName, kms).Load(ctx)
+		initial.Data, err = vault.NewStore(a.paths.Vault, metadata.Provider, metadata.KeyName, kms).Load(ctx)
 		if err != nil {
 			return err
 		}
 	} else if !errors.Is(err, vault.ErrNotFound) {
 		return err
 	}
+	provider := initial.Provider
+	if options.providerExplicit {
+		provider = options.provider
+	} else if provider == "" {
+		provider = vault.ProviderLocal
+	}
+	initial.Provider = provider
+	if hasVault && provider != metadata.Provider {
+		initial.KeyName = ""
+	}
+	if provider == vault.ProviderLocal {
+		initial.KeyName = vault.LocalKeyName
+	}
 
 	var result tui.SetupResult
-	if len(arguments) == 0 {
+	if !options.nonInteractive {
 		var saved bool
 		result, saved, err = tui.Setup(initial)
 		if err != nil || !saved {
 			return err
 		}
 	} else {
-		result, err = nonInteractiveSetup(arguments, initial, a.stdin)
+		result, err = nonInteractiveSetup(options, initial, a.stdin)
 		if err != nil {
 			return err
 		}
@@ -394,7 +440,7 @@ func (a *App) configure(ctx context.Context, arguments []string) error {
 		return err
 	}
 
-	kms, err := a.newKMS(ctx)
+	kms, err := a.keyWrapper(ctx, result.Provider, result.KeyName, result.Provider == vault.ProviderLocal)
 	if err != nil {
 		return err
 	}
@@ -435,13 +481,13 @@ func (a *App) configure(ctx context.Context, arguments []string) error {
 		result.Data.ControlPlane = initial.Data.ControlPlane
 		result.Data.ControlPlane.URL = configuredURL
 	}
-	if err := vault.NewStore(a.paths.Vault, result.KeyName, kms).Save(ctx, result.Data); err != nil {
+	if err := vault.NewStore(a.paths.Vault, result.Provider, result.KeyName, kms).Save(ctx, result.Data); err != nil {
 		if didEnroll {
 			return fmt.Errorf("enrollment succeeded but the local vault could not be saved; the enrollment token has been consumed: %w", err)
 		}
 		return err
 	}
-	fmt.Printf("✓ Beacon configuration encrypted at %s\n", a.paths.Vault)
+	fmt.Printf("✓ Beacon configuration encrypted with %s at %s\n", providerLabel(result.Provider), a.paths.Vault)
 	return nil
 }
 
@@ -450,16 +496,16 @@ func (a *App) status(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	kms, err := a.newKMS(ctx)
+	kms, err := a.keyWrapper(ctx, metadata.Provider, metadata.KeyName, false)
 	if err != nil {
 		return err
 	}
 	defer kms.Close()
-	data, err := vault.NewStore(a.paths.Vault, metadata.KeyName, kms).Load(ctx)
+	data, err := vault.NewStore(a.paths.Vault, metadata.Provider, metadata.KeyName, kms).Load(ctx)
 	if err != nil {
 		return err
 	}
-	fmt.Printf("Beacon status\n  Control plane: %s\n  Beacon name:   %s\n  Beacon ID:     %s\n  Vault:         encrypted · GCP KMS\n  Integrations:  %d configured\n", data.ControlPlane.URL, data.ControlPlane.BeaconName, data.ControlPlane.BeaconID, len(data.Integrations))
+	fmt.Printf("Beacon status\n  Control plane: %s\n  Beacon name:   %s\n  Beacon ID:     %s\n  Vault:         encrypted · %s\n  Integrations:  %d configured\n", data.ControlPlane.URL, data.ControlPlane.BeaconName, data.ControlPlane.BeaconID, providerLabel(metadata.Provider), len(data.Integrations))
 	return nil
 }
 
@@ -600,8 +646,21 @@ func (a *App) executeBeaconJob(ctx context.Context, client protocol.Client, job 
 }
 
 func validateSetup(result, initial tui.SetupResult, hasVault bool, version string) error {
-	if !keyNamePattern.MatchString(result.KeyName) {
-		return errors.New("GCP KMS key must use projects/{project}/locations/{location}/keyRings/{ring}/cryptoKeys/{key}")
+	switch result.Provider {
+	case vault.ProviderLocal:
+		if result.KeyName != vault.LocalKeyName {
+			return errors.New("local vault storage uses Beacon's managed local key")
+		}
+	case vault.ProviderGoogleKMS:
+		if !googleKeyNamePattern.MatchString(result.KeyName) {
+			return errors.New("Google KMS key must use projects/{project}/locations/{location}/keyRings/{ring}/cryptoKeys/{key}")
+		}
+	case vault.ProviderAWSKMS:
+		if invalidAWSKeyName(result.KeyName) {
+			return errors.New("AWS KMS key must be a key ARN, key ID, alias ARN, or alias/name")
+		}
+	default:
+		return errors.New("choose local, Google KMS, or AWS KMS vault storage")
 	}
 	parsed, err := url.ParseRequestURI(result.Data.ControlPlane.URL)
 	if err != nil || parsed.Host == "" {
@@ -637,6 +696,26 @@ func validateSetup(result, initial tui.SetupResult, hasVault bool, version strin
 	return nil
 }
 
+func invalidAWSKeyName(value string) bool {
+	value = strings.TrimSpace(value)
+	return value == "" || len(value) > 2048 || strings.IndexFunc(value, func(character rune) bool {
+		return character <= 0x20 || character == 0x7f
+	}) >= 0
+}
+
+func providerLabel(provider vault.Provider) string {
+	switch provider {
+	case vault.ProviderLocal:
+		return "local key"
+	case vault.ProviderGoogleKMS:
+		return "Google Cloud KMS"
+	case vault.ProviderAWSKMS:
+		return "AWS KMS"
+	default:
+		return string(provider)
+	}
+}
+
 func completeIdentity(controlPlane vault.ControlPlane) bool {
 	if !beaconIDPattern.MatchString(controlPlane.BeaconID) || invalidDisplayText(controlPlane.BeaconName, 80) {
 		return false
@@ -660,25 +739,82 @@ func invalidDisplayText(value string, maximumBytes int) bool {
 	}) >= 0
 }
 
-func nonInteractiveSetup(arguments []string, initial tui.SetupResult, stdin io.Reader) (tui.SetupResult, error) {
+type configureOptions struct {
+	provider         vault.Provider
+	providerExplicit bool
+	nonInteractive   bool
+	keyName          string
+	controlPlane     string
+	name             string
+	tokenFromStdin   bool
+}
+
+func parseConfigureOptions(arguments []string) (configureOptions, error) {
 	flags := flag.NewFlagSet("beacon configure", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
-	keyName := flags.String("kms-key", "", "GCP KMS CryptoKey resource")
+	local := flags.Bool("local", false, "protect the vault with a local key file")
+	googleKMS := flags.Bool("google-kms", false, "protect the vault with Google Cloud KMS")
+	awsKMS := flags.Bool("aws-kms", false, "protect the vault with AWS KMS")
+	keyName := flags.String("kms-key", "", "Google Cloud or AWS KMS key identifier")
 	controlPlane := flags.String("control-plane", "", "iamly.io control-plane URL")
 	name := flags.String("name", "", "Beacon name")
 	tokenFromStdin := flags.Bool("enrollment-token-stdin", false, "read the enrollment token from stdin")
 	if err := flags.Parse(arguments); err != nil {
-		return tui.SetupResult{}, fmt.Errorf("invalid configure arguments: %w", err)
+		return configureOptions{}, fmt.Errorf("invalid configure arguments: %w", err)
 	}
-	if flags.NArg() != 0 || *keyName == "" || *controlPlane == "" || *name == "" {
-		return tui.SetupResult{}, errors.New("noninteractive configure requires --kms-key, --control-plane, and --name")
+	if flags.NArg() != 0 {
+		return configureOptions{}, errors.New("configure accepts flags only")
+	}
+	selected := 0
+	options := configureOptions{
+		keyName:        strings.TrimSpace(*keyName),
+		controlPlane:   strings.TrimSpace(*controlPlane),
+		name:           strings.TrimSpace(*name),
+		tokenFromStdin: *tokenFromStdin,
+	}
+	if *local {
+		selected++
+		options.provider = vault.ProviderLocal
+	}
+	if *googleKMS {
+		selected++
+		options.provider = vault.ProviderGoogleKMS
+	}
+	if *awsKMS {
+		selected++
+		options.provider = vault.ProviderAWSKMS
+	}
+	if selected > 1 {
+		return configureOptions{}, errors.New("choose only one of --local, --google-kms, or --aws-kms")
+	}
+	options.providerExplicit = selected == 1
+	if options.keyName != "" && !options.providerExplicit {
+		// Preserve the original --kms-key invocation as Google KMS.
+		options.provider = vault.ProviderGoogleKMS
+		options.providerExplicit = true
+	}
+	options.nonInteractive = options.keyName != "" || options.controlPlane != "" || options.name != "" || options.tokenFromStdin
+	return options, nil
+}
+
+func nonInteractiveSetup(options configureOptions, initial tui.SetupResult, stdin io.Reader) (tui.SetupResult, error) {
+	if options.controlPlane == "" || options.name == "" {
+		return tui.SetupResult{}, errors.New("noninteractive configure requires --control-plane and --name")
+	}
+	if initial.Provider != vault.ProviderLocal && options.keyName == "" && initial.KeyName == "" {
+		return tui.SetupResult{}, errors.New("noninteractive cloud KMS configure requires --kms-key")
+	}
+	if initial.Provider == vault.ProviderLocal && options.keyName != "" {
+		return tui.SetupResult{}, errors.New("--local does not accept --kms-key")
 	}
 
 	result := initial
-	result.KeyName = strings.TrimSpace(*keyName)
-	result.Data.ControlPlane.URL = strings.TrimRight(strings.TrimSpace(*controlPlane), "/")
-	result.Data.ControlPlane.BeaconName = strings.TrimSpace(*name)
-	if *tokenFromStdin {
+	if options.keyName != "" {
+		result.KeyName = options.keyName
+	}
+	result.Data.ControlPlane.URL = strings.TrimRight(options.controlPlane, "/")
+	result.Data.ControlPlane.BeaconName = options.name
+	if options.tokenFromStdin {
 		blob, err := io.ReadAll(io.LimitReader(stdin, 4097))
 		if err != nil {
 			return tui.SetupResult{}, fmt.Errorf("read enrollment token from stdin: %w", err)
@@ -703,9 +839,10 @@ func printHelp() {
 
 Usage:
   beacon                 Open the terminal interface
-  beacon configure       Configure and enroll interactively
-  beacon configure --kms-key KEY --control-plane URL --name NAME [--enrollment-token-stdin]
-                         Configure noninteractively; read a one-time token only from stdin
+  beacon configure [--local | --google-kms | --aws-kms]
+                         Configure interactively; new vaults default to local storage
+  beacon configure [STORAGE] --control-plane URL --name NAME [--kms-key KEY] [--enrollment-token-stdin]
+                         Configure noninteractively; cloud KMS backends require --kms-key
   beacon secret set [integration]
                          Configure one supported integration through guided prompts
   beacon secret import --stdin

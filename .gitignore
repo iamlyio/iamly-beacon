@@ -7,3 +7,5 @@
 # Local encrypted vault and runtime state.
 .beacon/
 *.vault
+vault.bin
+local.key
