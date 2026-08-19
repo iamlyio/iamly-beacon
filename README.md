@@ -20,6 +20,27 @@ proxy. No vendor credential or signing private key is included.
 provides ready-to-run binaries with no language runtime to install. Choose the
 archive matching the machine that will keep your application credentials:
 
+For a guided Linux or macOS installation, run:
+
+```sh
+curl --proto '=https' --tlsv1.2 -fsSL \
+  https://raw.githubusercontent.com/iamlyio/iamly-beacon/main/install.sh | sh
+```
+
+The installer detects AMD64 or ARM64, downloads the pinned release candidate,
+verifies its SHA-256 checksum, installs `beacon` under `~/.local/bin`, and then
+opens the local terminal for guided setup. To install without starting setup:
+
+```sh
+curl --proto '=https' --tlsv1.2 -fsSL \
+  https://raw.githubusercontent.com/iamlyio/iamly-beacon/main/install.sh \
+  | sh -s -- --no-configure
+```
+
+Piping a remote script into a shell trusts the GitHub repository and delivery
+path. Review [`install.sh`](install.sh) first or use the checksum-first manual
+steps below when that trust model is not appropriate.
+
 | Operating system | AMD64 / Intel | ARM64 / Apple silicon |
 | --- | --- | --- |
 | Linux | `iamly-beacon_linux_amd64.tar.gz` | `iamly-beacon_linux_arm64.tar.gz` |

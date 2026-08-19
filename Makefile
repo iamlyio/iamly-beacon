@@ -1,7 +1,7 @@
 VERSION ?= $(shell tr -d '[:space:]' < VERSION)
 LDFLAGS = -s -w -X main.version=v$(VERSION)
 
-.PHONY: build test check format-check module-check run release-snapshot verify-release
+.PHONY: build test check format-check module-check installer-test run release-snapshot verify-release
 
 build:
 	go build -trimpath -ldflags "$(LDFLAGS)" -o beacon ./cmd/beacon
@@ -17,7 +17,10 @@ module-check:
 	go mod verify
 	go mod tidy -diff
 
-check: format-check module-check
+installer-test:
+	./scripts/test-install.sh
+
+check: format-check module-check installer-test
 	go vet ./...
 	go test -race ./...
 
