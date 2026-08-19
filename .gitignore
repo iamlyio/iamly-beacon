@@ -1,0 +1,11 @@
+.DS_Store
+/beacon
+/dist/
+/coverage.out
+*.log
+
+# Local encrypted vault and runtime state.
+.beacon/
+*.vault
+vault.bin
+local.key

@@ -1,0 +1,2 @@
+# Exact historical fingerprint for the synthetic `abc` PEM parser fixture.
+d22fd6118eaa473ef2808aff131052be0e0d81d6:internal/collector/google_test.go:private-key:6

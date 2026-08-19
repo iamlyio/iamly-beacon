@@ -1,0 +1,8 @@
+.git
+.github
+beacon
+dist
+coverage.out
+*.log
+vault.bin
+local.key
