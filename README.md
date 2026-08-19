@@ -80,7 +80,7 @@ installation below when that trust model is not appropriate.
 
 ## Manual download and verification
 
-[GitHub Releases](https://github.com/iamlyio/iamly-beacon/releases/tag/v2.2.0-rc.2)
+[GitHub Releases](https://github.com/iamlyio/iamly-beacon/releases/tag/v2.2.0-rc.3)
 provides ready-to-run binaries with no language runtime to install. Choose the
 archive matching the server that will keep your application credentials:
 
@@ -96,7 +96,7 @@ For a typical Intel/AMD Linux host:
 
 ```sh
 archive=iamly-beacon_linux_amd64.tar.gz
-base=https://github.com/iamlyio/iamly-beacon/releases/download/v2.2.0-rc.2
+base=https://github.com/iamlyio/iamly-beacon/releases/download/v2.2.0-rc.3
 curl --fail --location --remote-name "$base/$archive"
 curl --fail --location --remote-name "$base/SHA256SUMS"
 grep " $archive\$" SHA256SUMS > SHA256SUMS.selected
@@ -115,7 +115,7 @@ Use `darwin_arm64` on Apple silicon or `darwin_amd64` on an Intel Mac:
 
 ```sh
 archive=iamly-beacon_darwin_arm64.tar.gz
-base=https://github.com/iamlyio/iamly-beacon/releases/download/v2.2.0-rc.2
+base=https://github.com/iamlyio/iamly-beacon/releases/download/v2.2.0-rc.3
 curl --fail --location --remote-name "$base/$archive"
 curl --fail --location --remote-name "$base/SHA256SUMS"
 grep " $archive\$" SHA256SUMS > SHA256SUMS.selected
@@ -133,7 +133,7 @@ ARM:
 
 ```powershell
 $Archive = "iamly-beacon_windows_amd64.zip"
-$Base = "https://github.com/iamlyio/iamly-beacon/releases/download/v2.2.0-rc.2"
+$Base = "https://github.com/iamlyio/iamly-beacon/releases/download/v2.2.0-rc.3"
 Invoke-WebRequest "$Base/$Archive" -OutFile $Archive
 Invoke-WebRequest "$Base/SHA256SUMS" -OutFile "SHA256SUMS"
 $Expected = ((Select-String -Path "SHA256SUMS" -Pattern " $Archive$").Line -split "\s+")[0]

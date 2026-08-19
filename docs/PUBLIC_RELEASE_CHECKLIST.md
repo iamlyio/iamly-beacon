@@ -10,7 +10,7 @@ pushing a release tag.
 - [x] Replace the public branch and tag history with the reviewed release tree
   in one root commit.
 - [ ] Confirm the supported-version policy and community moderation channel.
-- [ ] Confirm the development prerelease is `v2.2.0-rc.2` and approve its
+- [ ] Confirm the development prerelease is `v2.2.0-rc.3` and approve its
   changelog.
 
 ## Production readiness

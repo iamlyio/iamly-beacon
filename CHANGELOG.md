@@ -3,6 +3,15 @@
 All notable changes to iamly Beacon are documented here. The project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0-rc.3] - 2026-08-19
+
+### Added
+
+- npm organization member and role collection through a dedicated access token.
+- Docker Hub organization member, invitation, role, and recent-activity
+  collection through a personal or organization access token.
+- Guided local-vault setup and installation documentation for both integrations.
+
 ## [2.2.0-rc.2] - 2026-08-19
 
 ### Added
@@ -67,6 +76,7 @@ All notable changes to iamly Beacon are documented here. The project follows
 - Initial Beacon collector, encrypted GCP KMS-backed vault, enrollment flow,
   signed control-plane protocol, and core SaaS collectors.
 
+[2.2.0-rc.3]: https://github.com/iamlyio/iamly-beacon/releases/tag/v2.2.0-rc.3
 [2.2.0-rc.2]: https://github.com/iamlyio/iamly-beacon/releases/tag/v2.2.0-rc.2
 [2.2.0-rc.1]: https://github.com/iamlyio/iamly-beacon/releases/tag/v2.2.0-rc.1
 [2.1.1]: https://github.com/iamlyio/iamly-beacon/blob/main/CHANGELOG.md#211---2026-08-18
