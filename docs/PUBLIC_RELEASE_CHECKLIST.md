@@ -26,12 +26,12 @@ Use this checklist for each public prerelease and stable release.
 
 - [x] Scan all fetched Git refs and the complete uncommitted release tree with
   Gitleaks v8.30.1; zero unallowlisted findings on 2026-08-19.
-- [x] Build all six v2.2.0 platform archives, verify their checksums and embedded
-  version, and recursively scan the archives and SBOM; zero findings on
-  2026-08-19.
+- [x] Build all six v2.2.0-rc.7 platform archives, verify their checksums and
+  embedded version, and recursively scan the archives and SBOM; zero findings
+  on 2026-08-20.
 - [x] Run formatting, module verification, tidy-diff, vet, race-enabled tests,
-  and `govulncheck`; zero reachable vulnerabilities on 2026-08-19.
-- [ ] Repeat these checks from the final committed tag in GitHub Actions before
+  and `govulncheck`; zero reachable vulnerabilities on 2026-08-20.
+- [x] Repeat these checks from the final committed tag in GitHub Actions before
   changing repository visibility or publishing the release.
 
 ## GitHub repository settings
@@ -50,12 +50,12 @@ Use this checklist for each public prerelease and stable release.
 
 ## Publish
 
-- [ ] Commit and push the release-preparation changes; wait for CI to pass.
-- [ ] Create the signed annotated tag following [RELEASING.md](RELEASING.md).
-- [ ] Confirm the release workflow publishes six archives, `SHA256SUMS`, and the
+- [x] Commit and push the release-preparation changes; wait for CI to pass.
+- [x] Create the signed annotated tag following [RELEASING.md](RELEASING.md).
+- [x] Confirm the release workflow publishes six archives, `SHA256SUMS`, and the
   CycloneDX SBOM.
-- [ ] Verify GitHub provenance for at least one artifact on each operating
+- [x] Verify GitHub provenance for at least one artifact on each operating
   system.
-- [ ] Confirm the README's latest-release download links work without GitHub
+- [x] Confirm the README's latest-release download links work without GitHub
   authentication.
 - [ ] Announce the release only after a clean install and enrollment smoke test.
