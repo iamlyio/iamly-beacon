@@ -597,6 +597,24 @@ func TestSecretTestEnforcesThirtySecondClassTimeout(t *testing.T) {
 	}
 }
 
+func TestHeartbeatLoggingReportsFirstSuccessAndRecoveryWithoutSuccessSpam(t *testing.T) {
+	var output bytes.Buffer
+	state := heartbeatLogState{}
+
+	state.recordSuccess(&output)
+	state.recordSuccess(&output)
+	state.recordFailure()
+	state.recordFailure()
+	state.recordSuccess(&output)
+	state.recordSuccess(&output)
+
+	want := "Beacon heartbeat acknowledged · control plane reachable\n" +
+		"Beacon heartbeat restored · control plane reachable\n"
+	if output.String() != want {
+		t.Fatalf("heartbeat output = %q, want %q", output.String(), want)
+	}
+}
+
 func TestIntegrationTestJobUploadsOnlyOutcome(t *testing.T) {
 	original := collector.ConnectionTesters
 	t.Cleanup(func() { collector.ConnectionTesters = original })

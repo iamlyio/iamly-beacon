@@ -573,6 +573,27 @@ func (a *App) status(ctx context.Context) error {
 	return nil
 }
 
+type heartbeatLogState struct {
+	acknowledged bool
+	interrupted  bool
+}
+
+func (state *heartbeatLogState) recordFailure() {
+	if state.acknowledged {
+		state.interrupted = true
+	}
+}
+
+func (state *heartbeatLogState) recordSuccess(output io.Writer) {
+	if !state.acknowledged {
+		fmt.Fprintln(output, "Beacon heartbeat acknowledged · control plane reachable")
+		state.acknowledged = true
+	} else if state.interrupted {
+		fmt.Fprintln(output, "Beacon heartbeat restored · control plane reachable")
+	}
+	state.interrupted = false
+}
+
 func (a *App) run(ctx context.Context) error {
 	_, data, kms, err := a.openVault(ctx)
 	if err != nil {
@@ -598,14 +619,17 @@ func (a *App) run(ctx context.Context) error {
 	if len(integrations) == 0 {
 		return errors.New("no supported integration credentials are configured")
 	}
-	fmt.Fprintf(a.output(), "Beacon worker connected · %d integrations available\n", len(integrations))
+	output := a.output()
+	heartbeatState := heartbeatLogState{}
+	fmt.Fprintf(output, "Beacon worker starting · %d integrations available\n", len(integrations))
 	for {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
 		job, err := client.Poll(ctx, integrations)
 		if err != nil {
-			fmt.Fprintf(a.output(), "Beacon poll unavailable: %s\n", err)
+			heartbeatState.recordFailure()
+			fmt.Fprintf(output, "Beacon poll unavailable: %s\n", err)
 			select {
 			case <-ctx.Done():
 				return ctx.Err()
@@ -613,6 +637,7 @@ func (a *App) run(ctx context.Context) error {
 				continue
 			}
 		}
+		heartbeatState.recordSuccess(output)
 		if job == nil {
 			continue
 		}
