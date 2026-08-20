@@ -54,7 +54,7 @@ func cloudflareSubscriptionSpend(ctx context.Context, token, accountID string) *
 	var payload struct {
 		Success bool `json:"success"`
 		Result  []struct {
-			Currency string  `json:"currency"`
+			Currency  string  `json:"currency"`
 			Frequency string  `json:"frequency"`
 			Price     float64 `json:"price"`
 			State     string  `json:"state"`

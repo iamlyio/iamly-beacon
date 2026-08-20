@@ -59,7 +59,7 @@ func openAICurrentMonthSpend(ctx context.Context, adminAPIKey string) *protocol.
 					} `json:"amount"`
 				} `json:"results"`
 			} `json:"data"`
-			HasMore bool   `json:"has_more"`
+			HasMore  bool   `json:"has_more"`
 			NextPage string `json:"next_page"`
 		}
 		decodeErr := decodeVendorJSON(response.Body, 16<<20, &payload)
