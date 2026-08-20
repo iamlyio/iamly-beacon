@@ -115,22 +115,14 @@ func (a *App) Execute(ctx context.Context, arguments []string) error {
 	switch arguments[0] {
 	case "configure":
 		return a.configure(ctx, arguments[1:])
-	case "secret":
-		if len(arguments) < 2 {
-			return errors.New("use beacon secret set, beacon secret test, beacon secret import --stdin, or beacon secret list")
-		}
-		switch arguments[1] {
-		case "set":
-			return a.storeSecret(ctx, arguments[2:])
-		case "test":
-			return a.testSecret(ctx, arguments[2:])
-		case "import":
-			return a.importSecrets(ctx, arguments[2:])
-		case "list":
-			return a.listSecrets(ctx)
-		default:
-			return errors.New("use beacon secret set, beacon secret test, beacon secret import --stdin, or beacon secret list")
-		}
+	case "set":
+		return a.storeSecret(ctx, arguments[1:])
+	case "test":
+		return a.testSecret(ctx, arguments[1:])
+	case "import":
+		return a.importSecrets(ctx, arguments[1:])
+	case "list":
+		return a.listSecrets(ctx)
 	case "status":
 		return a.status(ctx)
 	case "run":
@@ -167,7 +159,7 @@ func (a *App) execute(ctx context.Context, action tui.Action) error {
 
 func (a *App) testSecret(ctx context.Context, arguments []string) error {
 	if len(arguments) > 1 {
-		return errors.New("use beacon secret test <integration>")
+		return errors.New("use beacon test <integration>")
 	}
 	_, data, kms, err := a.openVault(ctx)
 	if err != nil {
@@ -223,7 +215,7 @@ func configuredTestableIntegrations(credentials map[string]map[string]string) []
 
 func (a *App) storeSecret(ctx context.Context, arguments []string) error {
 	if len(arguments) > 1 {
-		return errors.New("use beacon secret set [integration]")
+		return errors.New("use beacon set [integration]")
 	}
 	metadata, data, kms, err := a.openVault(ctx)
 	if err != nil {
@@ -302,7 +294,7 @@ type credentialImportItem struct {
 
 func (a *App) importSecrets(ctx context.Context, arguments []string) error {
 	if len(arguments) != 1 || arguments[0] != "--stdin" {
-		return errors.New("use beacon secret import --stdin; credential values are accepted only through stdin")
+		return errors.New("use beacon import --stdin; credential values are accepted only through stdin")
 	}
 	if file, ok := a.stdin.(*os.File); ok {
 		info, err := file.Stat()
@@ -972,13 +964,13 @@ Usage:
                          Configure interactively against the canonical IAMly control plane
   beacon configure [STORAGE] --name NAME [--kms-key KEY] [--enrollment-token-stdin]
                          Configure noninteractively; cloud KMS backends require --kms-key
-  beacon secret set [integration]
+  beacon set [integration]
                          Configure one supported integration through guided prompts
-  beacon secret test <integration>
+  beacon test <integration>
                          Verify one saved credential with a bounded read-only vendor request
-  beacon secret import --stdin
+  beacon import --stdin
                          Import a versioned JSON credential bundle only from stdin
-  beacon secret list     List secret names without revealing their values
+  beacon list            List secret names without revealing their values
   beacon status          Inspect configuration without exposing secrets
   beacon run             Start the outbound collection worker
   beacon upgrade [--version vX.Y.Z]

@@ -169,4 +169,4 @@ if [ "$configure" = true ]; then
   fi
 fi
 
-printf '\n%s\n' "Next: configure a collector with 'beacon secret set <integration>', then run 'beacon run'."
+printf '\n%s\n' "Next: configure a collector with 'beacon set <integration>', then run 'beacon run'."

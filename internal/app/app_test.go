@@ -522,7 +522,7 @@ func configureConnectionTestCredential(t *testing.T, application *App, path stri
 	}
 }
 
-func TestSecretTestUsesSavedCredentialWithoutControlPlane(t *testing.T) {
+func TestTopLevelTestUsesSavedCredentialWithoutControlPlane(t *testing.T) {
 	const secret = "saved-secret-value"
 	var output bytes.Buffer
 	application, path, wrapper := importTestApp(t, strings.NewReader(""), &output)
@@ -540,7 +540,7 @@ func TestSecretTestUsesSavedCredentialWithoutControlPlane(t *testing.T) {
 			return nil
 		},
 	}
-	if err := application.Execute(context.Background(), []string{"secret", "test", "github"}); err != nil {
+	if err := application.Execute(context.Background(), []string{"test", "github"}); err != nil {
 		t.Fatal(err)
 	}
 	if called != 1 || !strings.Contains(output.String(), "minimum read access available") || strings.Contains(output.String(), secret) {
@@ -548,7 +548,7 @@ func TestSecretTestUsesSavedCredentialWithoutControlPlane(t *testing.T) {
 	}
 }
 
-func TestSecretTestReturnsOnlyFixedFailureCode(t *testing.T) {
+func TestTopLevelTestReturnsOnlyFixedFailureCode(t *testing.T) {
 	const secret = "must-never-reach-output"
 	application, path, wrapper := importTestApp(t, strings.NewReader(""), io.Discard)
 	configureConnectionTestCredential(t, application, path, wrapper, "github", map[string]string{"org": "acme", "token": secret})
@@ -559,18 +559,18 @@ func TestSecretTestReturnsOnlyFixedFailureCode(t *testing.T) {
 			return collector.ConnectionError{Code: collector.PermissionDenied}
 		},
 	}
-	err := application.Execute(context.Background(), []string{"secret", "test", "github"})
+	err := application.Execute(context.Background(), []string{"test", "github"})
 	if err == nil || !strings.Contains(err.Error(), string(collector.PermissionDenied)) || strings.Contains(err.Error(), secret) {
 		t.Fatalf("unsafe connection error: %v", err)
 	}
 }
 
-func TestSecretTestRejectsUnsupportedUnconfiguredAndExtraArguments(t *testing.T) {
+func TestTopLevelTestRejectsUnsupportedUnconfiguredAndExtraArguments(t *testing.T) {
 	application, _, _ := importTestApp(t, strings.NewReader(""), io.Discard)
 	tests := [][]string{
-		{"secret", "test", "dropbox"},
-		{"secret", "test", "github"},
-		{"secret", "test", "github", "extra"},
+		{"test", "dropbox"},
+		{"test", "github"},
+		{"test", "github", "extra"},
 	}
 	for _, arguments := range tests {
 		if err := application.Execute(context.Background(), arguments); err == nil {
@@ -579,7 +579,7 @@ func TestSecretTestRejectsUnsupportedUnconfiguredAndExtraArguments(t *testing.T)
 	}
 }
 
-func TestSecretTestEnforcesThirtySecondClassTimeout(t *testing.T) {
+func TestTopLevelTestEnforcesThirtySecondClassTimeout(t *testing.T) {
 	application, path, wrapper := importTestApp(t, strings.NewReader(""), io.Discard)
 	application.connectionTimeout = 5 * time.Millisecond
 	configureConnectionTestCredential(t, application, path, wrapper, "github", map[string]string{"org": "acme", "token": "secret"})
@@ -591,7 +591,7 @@ func TestSecretTestEnforcesThirtySecondClassTimeout(t *testing.T) {
 			return ctx.Err()
 		},
 	}
-	err := application.Execute(context.Background(), []string{"secret", "test", "github"})
+	err := application.Execute(context.Background(), []string{"test", "github"})
 	if err == nil || !strings.Contains(err.Error(), string(collector.TimedOut)) {
 		t.Fatalf("timeout error = %v", err)
 	}
@@ -752,14 +752,14 @@ func TestCredentialImportRejectsInvalidPayloadWithoutWriting(t *testing.T) {
 	}
 }
 
-func TestSecretListIsSortedAndNamesOnly(t *testing.T) {
+func TestTopLevelImportAndListAreSortedAndNamesOnly(t *testing.T) {
 	application, _, _ := importTestApp(t, strings.NewReader(`{"version":1,"secrets":[{"integration":"slack","name":"userToken","value":"slack-secret"},{"integration":"github","name":"token","value":"github-secret"}]}`), io.Discard)
-	if err := application.importSecrets(context.Background(), []string{"--stdin"}); err != nil {
+	if err := application.Execute(context.Background(), []string{"import", "--stdin"}); err != nil {
 		t.Fatal(err)
 	}
 	var output bytes.Buffer
 	application.stdout = &output
-	if err := application.listSecrets(context.Background()); err != nil {
+	if err := application.Execute(context.Background(), []string{"list"}); err != nil {
 		t.Fatal(err)
 	}
 	want := "existing.token\ngithub.token\nslack.userToken\n"
@@ -768,6 +768,17 @@ func TestSecretListIsSortedAndNamesOnly(t *testing.T) {
 	}
 	if strings.Contains(output.String(), "slack-secret") || strings.Contains(output.String(), "github-secret") {
 		t.Fatal("secret list exposed values")
+	}
+}
+
+func TestSecretCommandNestingIsRemoved(t *testing.T) {
+	application := &App{stdout: io.Discard}
+	err := application.Execute(context.Background(), []string{"secret", "list"})
+	if err == nil || !strings.Contains(err.Error(), `unknown command "secret"`) {
+		t.Fatalf("legacy secret command error = %v", err)
+	}
+	if err := application.Execute(context.Background(), []string{"set", "github", "extra"}); err == nil || err.Error() != "use beacon set [integration]" {
+		t.Fatalf("top-level set usage error = %v", err)
 	}
 }
 

@@ -43,8 +43,8 @@ enrollment succeeds, add a least-privilege collector credential and start the
 outbound worker:
 
 ```sh
-beacon secret set github
-beacon secret test github
+beacon set github
+beacon test github
 beacon status
 beacon run
 ```
@@ -178,7 +178,8 @@ version from `VERSION`; `make build` stamps that value into `beacon version`.
 ## Current foundation
 
 - Interactive terminal interface built with Bubble Tea.
-- `configure`, `secret`, `status`, `run`, `upgrade`, and `version` commands.
+- `configure`, `set`, `test`, `import`, `list`, `status`, `run`, `upgrade`, and
+  `version` commands.
 - Masked in-TUI entry for integration credentials; secret values are never CLI arguments.
 - Local XChaCha20-Poly1305 vault using a new data key and nonce per write.
 - Local, Google Cloud KMS, and AWS KMS vault-key providers with authenticated
@@ -241,28 +242,28 @@ port.
 Each supported collector has guided credential setup:
 
 ```sh
-beacon secret set bamboohr
-beacon secret set cloudflare
-beacon secret set gcp
-beacon secret set github
-beacon secret set google
-beacon secret set notion
-beacon secret set slack
-beacon secret set tailscale
-beacon secret set twingate
-beacon secret set zoom
+beacon set bamboohr
+beacon set cloudflare
+beacon set gcp
+beacon set github
+beacon set google
+beacon set notion
+beacon set slack
+beacon set tailscale
+beacon set twingate
+beacon set zoom
 # Also: anthropic, asana, canva, dockerhub, figma, linear, npmjs, openai, and vercel
 ```
 
 Beacon prompts for every required value, masks tokens and private keys, and
 writes the complete integration profile to the encrypted vault in one update.
-Running `beacon secret set` without an integration remains available for
+Running `beacon set` without an integration remains available for
 generic single-secret entry.
 
 Test a saved credential before a review:
 
 ```sh
-beacon secret test github
+beacon test github
 ```
 
 The test decrypts only that integration's saved values and has a 30-second
@@ -309,7 +310,7 @@ new integration retroactively to an in-progress review.
 
 Create a dedicated read-only API key owned by a BambooHR user who can view the
 complete employee roster and the work email, hire date, department, and job
-title fields. Run `beacon secret set bamboohr` and follow the prompts for:
+title fields. Run `beacon set bamboohr` and follow the prompts for:
 
 ```text
 bamboohr.companyDomain
@@ -336,7 +337,7 @@ beacon configure --aws-kms
 ```
 
 New vaults default to `--local` when no backend flag is supplied. Existing
-vaults remember their provider, so `beacon status`, `beacon run`, and secret
+vaults remember their provider, so `beacon status`, `beacon run`, and credential
 commands do not need a backend flag. Running `configure` with a different
 explicit backend decrypts the current vault and re-wraps it with the selected
 provider after a successful self-test.
@@ -384,7 +385,7 @@ as encryption context.
 
 ## GitHub collection
 
-Run `beacon secret set github` and follow the prompts, or use the bounded stdin
+Run `beacon set github` and follow the prompts, or use the bounded stdin
 importer, for:
 
 ```text
@@ -411,7 +412,7 @@ Billing collection requires GitHub's enhanced billing platform. The organization
 ## Zoom collection
 
 Create a Zoom Server-to-Server OAuth application, then run
-`beacon secret set zoom` and follow the prompts (or use the bounded stdin
+`beacon set zoom` and follow the prompts (or use the bounded stdin
 importer) for:
 
 ```text
@@ -439,7 +440,11 @@ make build
 ./beacon
 ```
 
-Set `BEACON_HOME` to choose a local runtime directory. Otherwise Beacon uses the operating system's user configuration directory.
+Set `BEACON_HOME` to choose a local runtime directory. Otherwise Beacon stores
+its vault at the operating system's user configuration path. On Linux, the
+default vault is `~/.config/iamly/beacon/vault.bin` unless `XDG_CONFIG_HOME` is
+set. With `BEACON_HOME=/path/to/beacon`, the vault is
+`/path/to/beacon/vault.bin`. The local key is stored beside it as `local.key`.
 
 ## Commands
 
@@ -449,14 +454,14 @@ beacon configure [--local | --google-kms | --aws-kms]
                        Configure interactively against the canonical IAMly control plane
 beacon configure [STORAGE] --name NAME [--kms-key KEY] --enrollment-token-stdin
                        Configure noninteractively; cloud providers require --kms-key
-beacon secret set [integration]
+beacon set [integration]
                        Guided setup for any supported collector;
                        omit integration for generic single-secret entry
-beacon secret test <integration>
+beacon test <integration>
                        Run one bounded read-only vendor connection probe
-beacon secret import --stdin
+beacon import --stdin
                        Atomically import a bounded versioned credential bundle from a pipe
-beacon secret list     List configured secret names without revealing values
+beacon list            List configured secret names without revealing values
 beacon status          Decrypt and inspect configuration without exposing secrets
 beacon run             Start the outbound collection worker
 beacon version         Print the build version
@@ -472,7 +477,7 @@ systemctl --user enable --now beacon.service
 sudo loginctl enable-linger "$USER"
 ```
 
-After any `beacon secret set ...` command, restart this service to reload the
+After any `beacon set ...` command, restart this service to reload the
 vault and advertise the updated collector list.
 
 See [the architecture](docs/ARCHITECTURE.md) for the SaaS/Beacon trust boundary.

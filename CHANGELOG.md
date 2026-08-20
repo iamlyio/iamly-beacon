@@ -3,6 +3,14 @@
 All notable changes to IAMly Beacon are documented here. The project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- Credential commands are now top-level: `beacon set`, `beacon test`,
+  `beacon import`, and `beacon list`. The former `beacon secret ...` nesting
+  has been removed.
+
 ## [2.2.0-rc.8] - 2026-08-20
 
 ### Changed
