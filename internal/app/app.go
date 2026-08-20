@@ -33,7 +33,7 @@ var credentialNamePattern = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_-]{0,63}$`)
 var beaconIDPattern = regexp.MustCompile(`^bcn_[A-Za-z0-9_-]{22}$`)
 
 const (
-	betaControlPlane           = "https://beacon-beta.iamly.io"
+	canonicalControlPlane      = "https://beacon.iamly.io"
 	maxCredentialImportBytes   = 1 << 20
 	maxCredentialImportEntries = 256
 	maxCredentialValueBytes    = 256 << 10
@@ -422,7 +422,7 @@ func (a *App) configure(ctx context.Context, arguments []string) error {
 	if provider == vault.ProviderLocal {
 		initial.KeyName = vault.LocalKeyName
 	}
-	initial.Data.ControlPlane.URL = betaControlPlane
+	initial.Data.ControlPlane.URL = canonicalControlPlane
 
 	var result tui.SetupResult
 	if !options.nonInteractive {
@@ -672,8 +672,8 @@ func validateSetup(result, initial tui.SetupResult, hasVault bool, version strin
 	default:
 		return errors.New("choose local, Google KMS, or AWS KMS vault storage")
 	}
-	if result.Data.ControlPlane.URL != betaControlPlane {
-		return errors.New("Beacon control plane must be the IAMly beta service")
+	if result.Data.ControlPlane.URL != canonicalControlPlane {
+		return errors.New("Beacon control plane must be the canonical IAMly service")
 	}
 	name := strings.TrimSpace(result.Data.ControlPlane.BeaconName)
 	if invalidDisplayText(name, 80) {
@@ -838,7 +838,7 @@ func printHelp() {
 Usage:
   beacon                 Open the terminal interface
   beacon configure [--local | --google-kms | --aws-kms]
-                         Configure interactively against the IAMly beta control plane
+                         Configure interactively against the canonical IAMly control plane
   beacon configure [STORAGE] --name NAME [--kms-key KEY] [--enrollment-token-stdin]
                          Configure noninteractively; cloud KMS backends require --kms-key
   beacon secret set [integration]

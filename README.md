@@ -8,7 +8,7 @@ Beacon is IAMly's customer-hosted collector. It gathers and normalizes identity,
 [Beacon repository](https://github.com/iamlyio/iamly-beacon) ·
 [Product domain](https://iamly.io)
 
-Beacon connects to the beta control plane at `https://beacon-beta.iamly.io`.
+Beacon connects to IAMly through the permanent endpoint `https://beacon.iamly.io`.
 The current release candidate is intended for beta testing, not production use.
 Each signed poll reports the host name, private interface addresses, and Beacon
 version; IAMly observes the public source address at its trusted reverse
@@ -25,7 +25,7 @@ curl --proto '=https' --tlsv1.2 -fsSL \
   https://raw.githubusercontent.com/iamlyio/iamly-beacon/main/install.sh | sh
 ```
 
-The installer uses `https://beacon-beta.iamly.io`. Create the token in the
+The installer uses `https://beacon.iamly.io`. Create the token in the
 [IAMly open beta](https://beta.iamly.io).
 
 The installer:
@@ -411,7 +411,7 @@ Set `BEACON_HOME` to choose a local runtime directory. Otherwise Beacon uses the
 ```text
 beacon                 Open the interactive terminal interface
 beacon configure [--local | --google-kms | --aws-kms]
-                       Configure interactively against the IAMly beta control plane
+                       Configure interactively against the canonical IAMly control plane
 beacon configure [STORAGE] --name NAME [--kms-key KEY] --enrollment-token-stdin
                        Configure noninteractively; cloud providers require --kms-key
 beacon secret set [integration]

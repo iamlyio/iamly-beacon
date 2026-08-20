@@ -7,8 +7,8 @@ attestations, and publishes a GitHub Release.
 
 ## Prepare
 
-1. Confirm the beta control-plane endpoints are reachable at
-   `https://beacon-beta.iamly.io`.
+1. Confirm the control-plane endpoints are reachable at
+   `https://beacon.iamly.io`.
 2. Update `VERSION` and `CHANGELOG.md`; they must describe the same version.
 3. Run `make check`, `make release-snapshot`, and `make verify-release`.
 4. Review the full diff and run a secret scan across Git history.
@@ -37,7 +37,7 @@ anything. After it completes:
    ```
 
 3. Run `beacon version` from at least one Linux, macOS, and Windows artifact.
-4. Complete a fresh enrollment against the beta control plane.
+4. Complete a fresh enrollment against the IAMly control plane.
 5. Confirm the release is marked latest and the installation links in the
    README resolve.
 

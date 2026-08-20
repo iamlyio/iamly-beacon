@@ -15,7 +15,7 @@ pushing a release tag.
 
 ## Production readiness
 
-- [ ] Route `https://beacon-beta.iamly.io/api/v1/beacon/*` to the beta control
+- [ ] Route `https://beacon.iamly.io/api/v1/beacon/*` to the IAMly control
   plane and verify TLS, proxy trust, rate limits, and request-size limits before
   publishing a beta release.
 - [ ] Complete a new enrollment using the packaged binary and a single-use

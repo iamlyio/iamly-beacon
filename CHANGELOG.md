@@ -3,6 +3,13 @@
 All notable changes to IAMly Beacon are documented here. The project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- Beacon now uses the permanent `https://beacon.iamly.io` control-plane
+  endpoint so installations keep the same address after the beta period.
+
 ## [2.2.0-rc.5] - 2026-08-20
 
 ### Added

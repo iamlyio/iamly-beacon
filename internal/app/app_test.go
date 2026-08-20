@@ -278,7 +278,7 @@ func (e *testEnroller) Enroll(_ context.Context, controlPlane, token, name, publ
 	if !e.kms.selfTested {
 		return enrollment.Result{}, errors.New("enrollment happened before KMS self-test")
 	}
-	if controlPlane != betaControlPlane || token != testToken() || name != "Production" || publicKey == "" || version != "v1.2.3" {
+	if controlPlane != canonicalControlPlane || token != testToken() || name != "Production" || publicKey == "" || version != "v1.2.3" {
 		return enrollment.Result{}, errors.New("unexpected enrollment input")
 	}
 	e.kms.enrolled = true
@@ -372,7 +372,7 @@ func TestConfigureLocalCreatesUsableRestrictedVault(t *testing.T) {
 	}
 }
 
-func TestConfigureSelectsBetaControlPlane(t *testing.T) {
+func TestConfigureSelectsCanonicalControlPlane(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("BEACON_HOME", home)
 	application, err := New("v1.2.3")
@@ -401,8 +401,8 @@ func TestConfigureSelectsBetaControlPlane(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if data.ControlPlane.URL != betaControlPlane {
-		t.Fatalf("control plane = %q, want %q", data.ControlPlane.URL, betaControlPlane)
+	if data.ControlPlane.URL != canonicalControlPlane {
+		t.Fatalf("control plane = %q, want %q", data.ControlPlane.URL, canonicalControlPlane)
 	}
 }
 
@@ -448,7 +448,7 @@ func TestConfigureWithBlankTokenRetainsExistingIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if data.ControlPlane.URL != betaControlPlane || data.ControlPlane.BeaconID != existing.ControlPlane.BeaconID ||
+	if data.ControlPlane.URL != canonicalControlPlane || data.ControlPlane.BeaconID != existing.ControlPlane.BeaconID ||
 		data.ControlPlane.SigningPrivateKey != existing.ControlPlane.SigningPrivateKey {
 		t.Fatalf("reconfigured identity = %#v", data.ControlPlane)
 	}
@@ -689,7 +689,7 @@ func TestConfigureCanRewrapExistingVaultToLocalStorage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if data.ControlPlane.URL != betaControlPlane || data.ControlPlane.SigningPrivateKey != existing.ControlPlane.SigningPrivateKey {
+	if data.ControlPlane.URL != canonicalControlPlane || data.ControlPlane.SigningPrivateKey != existing.ControlPlane.SigningPrivateKey {
 		t.Fatalf("migrated identity = %#v", data.ControlPlane)
 	}
 	if len(opened) != 2 || opened[0] != vault.ProviderGoogleKMS || opened[1] != vault.ProviderLocal || !localCreate {

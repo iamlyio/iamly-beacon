@@ -162,7 +162,7 @@ esac
 
 if [ "$configure" = true ]; then
   if [ -t 1 ] && [ -r /dev/tty ] && [ -w /dev/tty ]; then
-    printf '\nStarting guided setup against https://beacon-beta.iamly.io.\n' >/dev/tty
+    printf '\nStarting guided setup against https://beacon.iamly.io.\n' >/dev/tty
     "$install_dir/beacon" configure --local </dev/tty >/dev/tty 2>/dev/tty
   else
     printf '\nInstallation complete. Run this from an interactive terminal:\n  beacon configure --local\n'
