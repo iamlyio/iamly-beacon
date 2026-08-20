@@ -3,6 +3,14 @@
 All notable changes to IAMly Beacon are documented here. The project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0-rc.8] - 2026-08-20
+
+### Changed
+
+- Worker lifecycle, poll-failure, and heartbeat output now includes an RFC 3339
+  UTC timestamp. Every successful control-plane poll emits an acknowledged,
+  restored, or healthy heartbeat line for service debugging.
+
 ## [2.2.0-rc.7] - 2026-08-20
 
 ### Added
@@ -122,6 +130,7 @@ All notable changes to IAMly Beacon are documented here. The project follows
 - Initial Beacon collector, encrypted GCP KMS-backed vault, enrollment flow,
   signed control-plane protocol, and core SaaS collectors.
 
+[2.2.0-rc.8]: https://github.com/iamlyio/iamly-beacon/releases/tag/v2.2.0-rc.8
 [2.2.0-rc.7]: https://github.com/iamlyio/iamly-beacon/releases/tag/v2.2.0-rc.7
 [2.2.0-rc.6]: https://github.com/iamlyio/iamly-beacon/releases/tag/v2.2.0-rc.6
 [2.2.0-rc.5]: https://github.com/iamlyio/iamly-beacon/releases/tag/v2.2.0-rc.5

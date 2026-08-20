@@ -8,7 +8,7 @@ Use this checklist for each public prerelease and stable release.
 - [x] Replace the public branch and tag history with the reviewed release tree
   in one root commit.
 - [ ] Confirm the supported-version policy and community moderation channel.
-- [x] Confirm the current beta prerelease is `v2.2.0-rc.7` and approve its
+- [x] Confirm the target beta prerelease is `v2.2.0-rc.8` and approve its
   changelog.
 
 ## Production readiness
@@ -50,12 +50,12 @@ Use this checklist for each public prerelease and stable release.
 
 ## Publish
 
-- [x] Commit and push the release-preparation changes; wait for CI to pass.
-- [x] Create the signed annotated tag following [RELEASING.md](RELEASING.md).
-- [x] Confirm the release workflow publishes six archives, `SHA256SUMS`, and the
+- [ ] Commit and push the release-preparation changes; wait for CI to pass.
+- [ ] Create the signed annotated tag following [RELEASING.md](RELEASING.md).
+- [ ] Confirm the release workflow publishes six archives, `SHA256SUMS`, and the
   CycloneDX SBOM.
-- [x] Verify GitHub provenance for at least one artifact on each operating
+- [ ] Verify GitHub provenance for at least one artifact on each operating
   system.
-- [x] Confirm the README's latest-release download links work without GitHub
+- [ ] Confirm the README's latest-release download links work without GitHub
   authentication.
 - [ ] Announce the release only after a clean install and enrollment smoke test.

@@ -584,12 +584,19 @@ func (state *heartbeatLogState) recordFailure() {
 	}
 }
 
-func (state *heartbeatLogState) recordSuccess(output io.Writer) {
+func runtimeTimestamp(at time.Time) string {
+	return at.UTC().Format(time.RFC3339)
+}
+
+func (state *heartbeatLogState) recordSuccess(output io.Writer, at time.Time) {
+	timestamp := runtimeTimestamp(at)
 	if !state.acknowledged {
-		fmt.Fprintln(output, "Beacon heartbeat acknowledged · control plane reachable")
+		fmt.Fprintf(output, "%s · Beacon heartbeat acknowledged · control plane reachable\n", timestamp)
 		state.acknowledged = true
 	} else if state.interrupted {
-		fmt.Fprintln(output, "Beacon heartbeat restored · control plane reachable")
+		fmt.Fprintf(output, "%s · Beacon heartbeat restored · control plane reachable\n", timestamp)
+	} else {
+		fmt.Fprintf(output, "%s · Beacon heartbeat healthy · control plane reachable\n", timestamp)
 	}
 	state.interrupted = false
 }
@@ -621,7 +628,7 @@ func (a *App) run(ctx context.Context) error {
 	}
 	output := a.output()
 	heartbeatState := heartbeatLogState{}
-	fmt.Fprintf(output, "Beacon worker starting · %d integrations available\n", len(integrations))
+	fmt.Fprintf(output, "%s · Beacon worker starting · %d integrations available\n", runtimeTimestamp(time.Now()), len(integrations))
 	for {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -629,7 +636,7 @@ func (a *App) run(ctx context.Context) error {
 		job, err := client.Poll(ctx, integrations)
 		if err != nil {
 			heartbeatState.recordFailure()
-			fmt.Fprintf(output, "Beacon poll unavailable: %s\n", err)
+			fmt.Fprintf(output, "%s · Beacon poll unavailable: %s\n", runtimeTimestamp(time.Now()), err)
 			select {
 			case <-ctx.Done():
 				return ctx.Err()
@@ -637,7 +644,7 @@ func (a *App) run(ctx context.Context) error {
 				continue
 			}
 		}
-		heartbeatState.recordSuccess(output)
+		heartbeatState.recordSuccess(output, time.Now())
 		if job == nil {
 			continue
 		}

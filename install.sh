@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-version="${IAMLY_BEACON_VERSION:-v2.2.0-rc.7}"
+version="${IAMLY_BEACON_VERSION:-v2.2.0-rc.8}"
 install_dir="${IAMLY_BEACON_INSTALL_DIR:-${HOME}/.local/bin}"
 release_base="${IAMLY_BEACON_RELEASE_BASE:-https://github.com/iamlyio/iamly-beacon/releases/download}"
 configure=true

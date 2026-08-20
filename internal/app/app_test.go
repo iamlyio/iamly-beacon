@@ -597,19 +597,22 @@ func TestSecretTestEnforcesThirtySecondClassTimeout(t *testing.T) {
 	}
 }
 
-func TestHeartbeatLoggingReportsFirstSuccessAndRecoveryWithoutSuccessSpam(t *testing.T) {
+func TestHeartbeatLoggingReportsEverySuccessWithState(t *testing.T) {
 	var output bytes.Buffer
 	state := heartbeatLogState{}
+	first := time.Date(2026, time.August, 20, 18, 31, 0, 0, time.FixedZone("test", 2*60*60))
 
-	state.recordSuccess(&output)
-	state.recordSuccess(&output)
+	state.recordSuccess(&output, first)
+	state.recordSuccess(&output, first.Add(5*time.Second))
 	state.recordFailure()
 	state.recordFailure()
-	state.recordSuccess(&output)
-	state.recordSuccess(&output)
+	state.recordSuccess(&output, first.Add(10*time.Second))
+	state.recordSuccess(&output, first.Add(15*time.Second))
 
-	want := "Beacon heartbeat acknowledged · control plane reachable\n" +
-		"Beacon heartbeat restored · control plane reachable\n"
+	want := "2026-08-20T16:31:00Z · Beacon heartbeat acknowledged · control plane reachable\n" +
+		"2026-08-20T16:31:05Z · Beacon heartbeat healthy · control plane reachable\n" +
+		"2026-08-20T16:31:10Z · Beacon heartbeat restored · control plane reachable\n" +
+		"2026-08-20T16:31:15Z · Beacon heartbeat healthy · control plane reachable\n"
 	if output.String() != want {
 		t.Fatalf("heartbeat output = %q, want %q", output.String(), want)
 	}

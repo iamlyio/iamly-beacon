@@ -88,7 +88,7 @@ ARM64. Windows operators should rerun the verified installer.
 
 ## Manual download and verification
 
-[GitHub Releases](https://github.com/iamlyio/iamly-beacon/releases/tag/v2.2.0-rc.7)
+[GitHub Releases](https://github.com/iamlyio/iamly-beacon/releases/tag/v2.2.0-rc.8)
 provides ready-to-run binaries with no language runtime to install. Choose the
 archive matching the server that will keep your application credentials:
 
@@ -104,7 +104,7 @@ For a typical Intel/AMD Linux host:
 
 ```sh
 archive=iamly-beacon_linux_amd64.tar.gz
-base=https://github.com/iamlyio/iamly-beacon/releases/download/v2.2.0-rc.7
+base=https://github.com/iamlyio/iamly-beacon/releases/download/v2.2.0-rc.8
 curl --fail --location --remote-name "$base/$archive"
 curl --fail --location --remote-name "$base/SHA256SUMS"
 grep " $archive\$" SHA256SUMS > SHA256SUMS.selected
@@ -123,7 +123,7 @@ Use `darwin_arm64` on Apple silicon or `darwin_amd64` on an Intel Mac:
 
 ```sh
 archive=iamly-beacon_darwin_arm64.tar.gz
-base=https://github.com/iamlyio/iamly-beacon/releases/download/v2.2.0-rc.7
+base=https://github.com/iamlyio/iamly-beacon/releases/download/v2.2.0-rc.8
 curl --fail --location --remote-name "$base/$archive"
 curl --fail --location --remote-name "$base/SHA256SUMS"
 grep " $archive\$" SHA256SUMS > SHA256SUMS.selected
@@ -141,7 +141,7 @@ ARM:
 
 ```powershell
 $Archive = "iamly-beacon_windows_amd64.zip"
-$Base = "https://github.com/iamlyio/iamly-beacon/releases/download/v2.2.0-rc.7"
+$Base = "https://github.com/iamlyio/iamly-beacon/releases/download/v2.2.0-rc.8"
 Invoke-WebRequest "$Base/$Archive" -OutFile $Archive
 Invoke-WebRequest "$Base/SHA256SUMS" -OutFile "SHA256SUMS"
 $Expected = ((Select-String -Path "SHA256SUMS" -Pattern " $Archive$").Line -split "\s+")[0]
@@ -198,7 +198,11 @@ version from `VERSION`; `make build` stamps that value into `beacon version`.
 - GitHub current-month net billing usage, normalized as USD spend when the organization billing API is available.
 - Unit tests for enrollment, request signing, encryption, permissions, freshness, and tamper detection.
 
-`beacon run` is a long-running worker. Install `deploy/beacon.service` as a systemd user service on Linux so it restarts after failures and reboots without requiring an inbound port.
+`beacon run` is a long-running worker. Each control-plane poll writes a
+timestamped heartbeat or failure line so service logs show the complete
+connection timeline. Install `deploy/beacon.service` as a systemd user service
+on Linux so it restarts after failures and reboots without requiring an inbound
+port.
 
 ## Review workflow
 
