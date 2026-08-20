@@ -5,6 +5,8 @@ All notable changes to IAMly Beacon are documented here. The project follows
 
 ## [Unreleased]
 
+## [2.2.0-rc.9] - 2026-08-20
+
 ### Changed
 
 - Credential commands are now top-level: `beacon set`, `beacon test`,
@@ -138,6 +140,7 @@ All notable changes to IAMly Beacon are documented here. The project follows
 - Initial Beacon collector, encrypted GCP KMS-backed vault, enrollment flow,
   signed control-plane protocol, and core SaaS collectors.
 
+[2.2.0-rc.9]: https://github.com/iamlyio/iamly-beacon/releases/tag/v2.2.0-rc.9
 [2.2.0-rc.8]: https://github.com/iamlyio/iamly-beacon/releases/tag/v2.2.0-rc.8
 [2.2.0-rc.7]: https://github.com/iamlyio/iamly-beacon/releases/tag/v2.2.0-rc.7
 [2.2.0-rc.6]: https://github.com/iamlyio/iamly-beacon/releases/tag/v2.2.0-rc.6

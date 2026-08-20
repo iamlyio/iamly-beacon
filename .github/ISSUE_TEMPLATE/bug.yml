@@ -10,7 +10,7 @@ body:
     id: version
     attributes:
       label: Beacon version
-      placeholder: v2.2.0-rc.8
+      placeholder: v2.2.0-rc.9
     validations:
       required: true
   - type: input

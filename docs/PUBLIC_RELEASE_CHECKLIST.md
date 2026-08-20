@@ -8,7 +8,7 @@ Use this checklist for each public prerelease and stable release.
 - [x] Replace the public branch and tag history with the reviewed release tree
   in one root commit.
 - [ ] Confirm the supported-version policy and community moderation channel.
-- [x] Confirm the target beta prerelease is `v2.2.0-rc.8` and approve its
+- [x] Confirm the target beta prerelease is `v2.2.0-rc.9` and approve its
   changelog.
 
 ## Production readiness
