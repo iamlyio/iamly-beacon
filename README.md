@@ -68,6 +68,23 @@ Piping a remote script into a shell trusts the GitHub repository and delivery
 path. Review [`install.sh`](install.sh) first or use the checksum-first manual
 installation below when that trust model is not appropriate.
 
+## Upgrade
+
+Upgrade to the newest published Beacon release from the same installation
+directory:
+
+```sh
+beacon upgrade
+```
+
+To install a specific release, use `beacon upgrade --version vX.Y.Z`. Beacon
+downloads the matching release archive, verifies its SHA-256 checksum and
+embedded version, then atomically replaces the current binary. The prior
+binary remains beside it as `beacon.previous`; the encrypted vault and
+configuration are not changed. Restart any running Beacon service after the
+upgrade. Automatic upgrades currently support Linux and macOS on AMD64 and
+ARM64. Windows operators should rerun the verified installer.
+
 ## Manual download and verification
 
 [GitHub Releases](https://github.com/iamlyio/iamly-beacon/releases/tag/v2.2.0-rc.5)
@@ -160,7 +177,7 @@ version from `VERSION`; `make build` stamps that value into `beacon version`.
 ## Current foundation
 
 - Interactive terminal interface built with Bubble Tea.
-- `configure`, `secret`, `status`, `run`, and `version` commands.
+- `configure`, `secret`, `status`, `run`, `upgrade`, and `version` commands.
 - Masked in-TUI entry for integration credentials; secret values are never CLI arguments.
 - Local XChaCha20-Poly1305 vault using a new data key and nonce per write.
 - Local, Google Cloud KMS, and AWS KMS vault-key providers with authenticated

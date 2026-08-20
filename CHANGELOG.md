@@ -12,6 +12,9 @@ All notable changes to IAMly Beacon are documented here. The project follows
   groups.
 - Guided local-vault setup and least-privilege configuration documentation for
   Cloudflare.
+- A `beacon upgrade` command that discovers or selects a release, verifies its
+  checksum and embedded version, preserves the previous binary, and replaces
+  the installed binary atomically on Linux and macOS.
 
 ## [2.2.0-rc.4] - 2026-08-19
 

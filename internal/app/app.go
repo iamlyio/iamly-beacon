@@ -22,6 +22,7 @@ import (
 	"github.com/iamlyio/iamly-beacon/internal/enrollment"
 	"github.com/iamlyio/iamly-beacon/internal/protocol"
 	"github.com/iamlyio/iamly-beacon/internal/tui"
+	"github.com/iamlyio/iamly-beacon/internal/upgrade"
 	"github.com/iamlyio/iamly-beacon/internal/vault"
 )
 
@@ -48,6 +49,7 @@ type App struct {
 	enroller          beaconEnroller
 	generateIdentity  func() (enrollment.Identity, error)
 	collectionTimeout time.Duration
+	upgrade           func(context.Context, string, []string, io.Writer) error
 }
 
 type kmsWrapper interface {
@@ -64,6 +66,7 @@ func New(version string) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
+	upgradeClient := upgrade.DefaultClient()
 	return &App{
 		version: version,
 		paths:   paths,
@@ -87,6 +90,7 @@ func New(version string) (*App, error) {
 		enroller:          enrollment.Client{},
 		generateIdentity:  enrollment.GenerateIdentity,
 		collectionTimeout: collectorTimeout,
+		upgrade:           upgradeClient.Run,
 	}, nil
 }
 
@@ -126,6 +130,8 @@ func (a *App) Execute(ctx context.Context, arguments []string) error {
 		return a.status(ctx)
 	case "run":
 		return a.run(ctx)
+	case "upgrade":
+		return a.upgrade(ctx, a.version, arguments[1:], a.stdout)
 	case "version", "--version", "-v":
 		fmt.Printf("Beacon %s\n", a.version)
 		return nil
@@ -842,6 +848,8 @@ Usage:
   beacon secret list     List secret names without revealing their values
   beacon status          Inspect configuration without exposing secrets
   beacon run             Start the outbound collection worker
+  beacon upgrade [--version vX.Y.Z]
+                         Install the latest or selected verified Beacon release
   beacon version         Print the build version
 `)
 }
