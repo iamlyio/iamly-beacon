@@ -510,6 +510,152 @@ func importTestApp(t *testing.T, input io.Reader, output io.Writer) (*App, strin
 	}, path, wrapper
 }
 
+func configureConnectionTestCredential(t *testing.T, application *App, path string, wrapper importKMS, integration string, credentials map[string]string) {
+	t.Helper()
+	data, err := vault.NewStore(path, vault.ProviderGoogleKMS, testKeyName, wrapper).Load(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	data.Integrations[integration] = credentials
+	if err := vault.NewStore(path, vault.ProviderGoogleKMS, testKeyName, wrapper).Save(context.Background(), data); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSecretTestUsesSavedCredentialWithoutControlPlane(t *testing.T) {
+	const secret = "saved-secret-value"
+	var output bytes.Buffer
+	application, path, wrapper := importTestApp(t, strings.NewReader(""), &output)
+	configureConnectionTestCredential(t, application, path, wrapper, "github", map[string]string{"org": "acme", "token": secret})
+
+	original := collector.ConnectionTesters
+	t.Cleanup(func() { collector.ConnectionTesters = original })
+	called := 0
+	collector.ConnectionTesters = map[string]collector.ConnectionTester{
+		"github": func(_ context.Context, credentials map[string]string) error {
+			called++
+			if credentials["token"] != secret || credentials["org"] != "acme" {
+				t.Fatal("connection tester did not receive the saved credential bundle")
+			}
+			return nil
+		},
+	}
+	if err := application.Execute(context.Background(), []string{"secret", "test", "github"}); err != nil {
+		t.Fatal(err)
+	}
+	if called != 1 || !strings.Contains(output.String(), "minimum read access available") || strings.Contains(output.String(), secret) {
+		t.Fatalf("calls=%d output=%q", called, output.String())
+	}
+}
+
+func TestSecretTestReturnsOnlyFixedFailureCode(t *testing.T) {
+	const secret = "must-never-reach-output"
+	application, path, wrapper := importTestApp(t, strings.NewReader(""), io.Discard)
+	configureConnectionTestCredential(t, application, path, wrapper, "github", map[string]string{"org": "acme", "token": secret})
+	original := collector.ConnectionTesters
+	t.Cleanup(func() { collector.ConnectionTesters = original })
+	collector.ConnectionTesters = map[string]collector.ConnectionTester{
+		"github": func(context.Context, map[string]string) error {
+			return collector.ConnectionError{Code: collector.PermissionDenied}
+		},
+	}
+	err := application.Execute(context.Background(), []string{"secret", "test", "github"})
+	if err == nil || !strings.Contains(err.Error(), string(collector.PermissionDenied)) || strings.Contains(err.Error(), secret) {
+		t.Fatalf("unsafe connection error: %v", err)
+	}
+}
+
+func TestSecretTestRejectsUnsupportedUnconfiguredAndExtraArguments(t *testing.T) {
+	application, _, _ := importTestApp(t, strings.NewReader(""), io.Discard)
+	tests := [][]string{
+		{"secret", "test", "dropbox"},
+		{"secret", "test", "github"},
+		{"secret", "test", "github", "extra"},
+	}
+	for _, arguments := range tests {
+		if err := application.Execute(context.Background(), arguments); err == nil {
+			t.Fatalf("invalid arguments succeeded: %v", arguments)
+		}
+	}
+}
+
+func TestSecretTestEnforcesThirtySecondClassTimeout(t *testing.T) {
+	application, path, wrapper := importTestApp(t, strings.NewReader(""), io.Discard)
+	application.connectionTimeout = 5 * time.Millisecond
+	configureConnectionTestCredential(t, application, path, wrapper, "github", map[string]string{"org": "acme", "token": "secret"})
+	original := collector.ConnectionTesters
+	t.Cleanup(func() { collector.ConnectionTesters = original })
+	collector.ConnectionTesters = map[string]collector.ConnectionTester{
+		"github": func(ctx context.Context, _ map[string]string) error {
+			<-ctx.Done()
+			return ctx.Err()
+		},
+	}
+	err := application.Execute(context.Background(), []string{"secret", "test", "github"})
+	if err == nil || !strings.Contains(err.Error(), string(collector.TimedOut)) {
+		t.Fatalf("timeout error = %v", err)
+	}
+}
+
+func TestIntegrationTestJobUploadsOnlyOutcome(t *testing.T) {
+	original := collector.ConnectionTesters
+	t.Cleanup(func() { collector.ConnectionTesters = original })
+	originalSupported := collector.Supported
+	t.Cleanup(func() { collector.Supported = originalSupported })
+	collector.Supported = map[string]collector.Collector{
+		"github": func(context.Context, map[string]string) ([]protocol.Member, *protocol.Spend, error) {
+			t.Fatal("integration test invoked the full collector")
+			return nil, nil, nil
+		},
+	}
+	collector.ConnectionTesters = map[string]collector.ConnectionTester{
+		"github": func(context.Context, map[string]string) error {
+			return collector.ConnectionError{Code: collector.RateLimited}
+		},
+	}
+	bodyChannel := make(chan []byte, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/api/v1/beacon/integration-tests/tst_abcdefghijklmnopqrstuv/results" {
+			http.Error(response, "unexpected path", http.StatusNotFound)
+			return
+		}
+		body, _ := io.ReadAll(request.Body)
+		bodyChannel <- body
+		response.Header().Set("Content-Type", "application/json")
+		_, _ = response.Write([]byte(`{"ok":true}`))
+	}))
+	t.Cleanup(server.Close)
+	identity, err := enrollment.GenerateIdentity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	client, err := protocol.New(server.URL, "bcn_abcdefghijklmnopqrstuv", identity.PrivateKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	job := protocol.Job{
+		Kind: "integration_test", ID: "tst_abcdefghijklmnopqrstuv", Platform: "github",
+		LeaseToken: "11111111-1111-4111-8111-111111111111", ClaimGeneration: 1,
+		LeaseExpiresAt: "2026-08-20T12:00:00Z",
+	}
+	application := &App{stdout: io.Discard, connectionTimeout: time.Second}
+	if err := application.executeIntegrationTestJob(context.Background(), client, job, map[string]map[string]string{
+		"github": {"org": "acme", "token": "secret"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	body := <-bodyChannel
+	var payload map[string]any
+	if json.Unmarshal(body, &payload) != nil || payload["ok"] != false || payload["errorCode"] != string(collector.RateLimited) {
+		t.Fatalf("result payload = %s", body)
+	}
+	for _, forbidden := range []string{"members", "platform", "secret", "acme"} {
+		if bytes.Contains(body, []byte(forbidden)) {
+			t.Fatalf("integration test result leaked %q: %s", forbidden, body)
+		}
+	}
+}
+
 func TestCredentialImportMergesAtomicallyWithoutRenderingValues(t *testing.T) {
 	const githubToken = "github-super-secret-value-4512"
 	const googleKey = "-----BEGIN PRIVATE KEY-----\nprivate-material\n-----END PRIVATE KEY-----"

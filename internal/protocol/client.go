@@ -21,6 +21,7 @@ import (
 const (
 	maxResponseBytes       = 1 << 20
 	maxResultUploadBytes   = 32 << 20
+	maxTestResultBytes     = 16 << 10
 	resultUploadAttempts   = 3
 	resultUploadRetryDelay = 250 * time.Millisecond
 	maxControlPlaneError   = 64
@@ -28,6 +29,7 @@ const (
 
 var (
 	jobIDPattern             = regexp.MustCompile(`^job_[A-Za-z0-9_-]{22}$`)
+	testIDPattern            = regexp.MustCompile(`^tst_[A-Za-z0-9_-]{22}$`)
 	leaseTokenPattern        = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
 	controlPlaneErrorPattern = regexp.MustCompile(`^[a-z][a-z0-9_]{0,63}$`)
 	beaconIDPattern          = regexp.MustCompile(`^bcn_[A-Za-z0-9_-]{22}$`)
@@ -63,12 +65,15 @@ type Client struct {
 }
 
 type Job struct {
+	Kind             string   `json:"kind,omitempty"`
 	ID               string   `json:"id"`
 	ReviewRunID      int64    `json:"reviewRunId"`
 	Platforms        []string `json:"platforms"`
 	PendingPlatforms []string `json:"pendingPlatforms"`
+	Platform         string   `json:"platform,omitempty"`
 	LeaseToken       string   `json:"leaseToken"`
 	ClaimGeneration  int64    `json:"claimGeneration"`
+	LeaseExpiresAt   string   `json:"leaseExpiresAt,omitempty"`
 }
 
 type Member struct {
@@ -143,6 +148,7 @@ func (c Client) Poll(ctx context.Context, integrations []string) (*Job, error) {
 	body, _ := json.Marshal(map[string]any{
 		"protocolVersion": 1,
 		"integrations":    integrations,
+		"capabilities":    []string{"integration_test_v1"},
 		"hostname":        hostname,
 		"privateIps":      privateIPs,
 		"version":         c.Version,
@@ -165,13 +171,39 @@ func (c Client) Poll(ctx context.Context, integrations []string) (*Job, error) {
 		!validJob(payload.Job) {
 		return nil, errors.New("control plane returned an invalid job")
 	}
+	if payload.Job.Kind == "" {
+		payload.Job.Kind = "review"
+	}
 	return &payload.Job, nil
 }
 
 func validJob(job Job) bool {
-	if !jobIDPattern.MatchString(job.ID) || job.ReviewRunID <= 0 ||
-		!leaseTokenPattern.MatchString(job.LeaseToken) || job.ClaimGeneration <= 0 {
+	if !leaseTokenPattern.MatchString(job.LeaseToken) || job.ClaimGeneration <= 0 {
 		return false
+	}
+	if job.Kind == "integration_test" {
+		if !testIDPattern.MatchString(job.ID) {
+			return false
+		}
+		if _, supported := supportedJobPlatforms[job.Platform]; !supported {
+			return false
+		}
+		if job.ReviewRunID != 0 || len(job.Platforms) != 0 || len(job.PendingPlatforms) != 0 {
+			return false
+		}
+		leaseExpiresAt, err := time.Parse(time.RFC3339, job.LeaseExpiresAt)
+		return err == nil && !leaseExpiresAt.IsZero()
+	}
+	if job.Kind != "" && job.Kind != "review" {
+		return false
+	}
+	if !jobIDPattern.MatchString(job.ID) || job.ReviewRunID <= 0 || job.Platform != "" {
+		return false
+	}
+	if job.LeaseExpiresAt != "" {
+		if _, err := time.Parse(time.RFC3339, job.LeaseExpiresAt); err != nil {
+			return false
+		}
 	}
 	platforms, ok := validPlatformList(job.Platforms)
 	if !ok {
@@ -187,6 +219,71 @@ func validJob(job Job) bool {
 		}
 	}
 	return true
+}
+
+var integrationTestErrorCodes = map[string]struct{}{
+	"credentials_rejected":  {},
+	"permission_denied":     {},
+	"invalid_configuration": {},
+	"rate_limited":          {},
+	"vendor_unavailable":    {},
+	"timed_out":             {},
+	"unexpected_response":   {},
+}
+
+func (c Client) UploadIntegrationTest(ctx context.Context, job Job, ok bool, errorCode string) error {
+	if job.Kind != "integration_test" || !validJob(job) {
+		return errors.New("integration test job is invalid")
+	}
+	if ok && errorCode != "" {
+		return errors.New("successful integration test cannot include an error code")
+	}
+	if !ok {
+		if _, supported := integrationTestErrorCodes[errorCode]; !supported {
+			return errors.New("failed integration test requires a supported error code")
+		}
+	}
+	payload := struct {
+		ProtocolVersion int    `json:"protocolVersion"`
+		LeaseToken      string `json:"leaseToken"`
+		ClaimGeneration int64  `json:"claimGeneration"`
+		OK              bool   `json:"ok"`
+		ErrorCode       string `json:"errorCode,omitempty"`
+	}{
+		ProtocolVersion: 1,
+		LeaseToken:      job.LeaseToken,
+		ClaimGeneration: job.ClaimGeneration,
+		OK:              ok,
+		ErrorCode:       errorCode,
+	}
+	body, err := json.Marshal(payload)
+	if err != nil || len(body) > maxTestResultBytes {
+		return errors.New("encode integration test result")
+	}
+	path := "/api/v1/beacon/integration-tests/" + url.PathEscape(job.ID) + "/results"
+	for attempt := 0; attempt < resultUploadAttempts; attempt++ {
+		response, status, requestErr := c.request(ctx, path, body)
+		if requestErr == nil && status == http.StatusOK {
+			return nil
+		}
+		retryable := requestErr != nil || status == http.StatusRequestTimeout ||
+			status == http.StatusTooEarly || status == http.StatusTooManyRequests || status >= 500
+		if !retryable || attempt == resultUploadAttempts-1 {
+			if requestErr != nil {
+				return requestErr
+			}
+			return responseError(status, response)
+		}
+		delay := resultUploadRetryDelay * time.Duration(1<<attempt)
+		timer := time.NewTimer(delay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return ctx.Err()
+		case <-timer.C:
+		}
+	}
+	return errors.New("integration test result retry exhausted")
 }
 
 func validPlatformList(platforms []string) (map[string]struct{}, bool) {

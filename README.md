@@ -44,6 +44,7 @@ outbound worker:
 
 ```sh
 beacon secret set github
+beacon secret test github
 beacon status
 beacon run
 ```
@@ -191,7 +192,7 @@ version from `VERSION`; `make build` stamps that value into `beacon version`.
 - Signed, nonce-protected outbound review-job polling with concurrent per-app uploads.
 - Bounded transient retries for vendor APIs and idempotent result uploads; expired jobs resume with only their missing applications.
 - Strict vendor-response size and pagination limits; redirects are refused so local authorization headers cannot cross request boundaries.
-- Eighteen local, read-only account collectors spanning HR, identity, cloud,
+- Nineteen local, read-only account collectors spanning HR, identity, cloud,
   developer, collaboration, network, and AI platforms.
 - GitHub deploy-key inventory across accessible organization repositories; only non-secret metadata is uploaded, never key material.
 - GitHub current-month net billing usage, normalized as USD spend when the organization billing API is available.
@@ -253,6 +254,36 @@ Beacon prompts for every required value, masks tokens and private keys, and
 writes the complete integration profile to the encrypted vault in one update.
 Running `beacon secret set` without an integration remains available for
 generic single-secret entry.
+
+Test a saved credential before a review:
+
+```sh
+beacon secret test github
+```
+
+The test decrypts only that integration's saved values and has a 30-second
+deadline. It uses the smallest bounded, read-only vendor probe, requests at
+most one account where the API supports a page size, and performs a token
+exchange first only when the vendor requires it. It never starts a review or
+sends vendor data to IAMly. The command reports only success or one fixed error
+code; credentials and vendor response bodies are not printed.
+The codes are `credentials_rejected`, `permission_denied`,
+`invalid_configuration`, `rate_limited`, `vendor_unavailable`, `timed_out`,
+and `unexpected_response`.
+
+The terminal menu provides the same **Test connection** action. When a test is
+requested from IAMly, Beacon advertises the `integration_test_v1` capability,
+runs the same local probe, and returns only `ok` plus an optional fixed error
+code. It never returns members or other collected observations for a
+connection test.
+
+npm does not provide a paginated organization-roster endpoint, so its bounded
+test uses the registry's
+[documented `/-/whoami` request](https://docs.npmjs.com/cli/v11/commands/npm-whoami/).
+This proves token authentication but cannot prove access to the configured
+organization without downloading the complete roster. Tailscale's users
+endpoint is also unpaginated; its test stops after a successful OAuth exchange
+that explicitly requests `users:read`.
 
 `beacon run` reads the vault when the worker starts. If Beacon is already
 running as a service, restart it after adding or changing credentials so the
@@ -417,6 +448,8 @@ beacon configure [STORAGE] --name NAME [--kms-key KEY] --enrollment-token-stdin
 beacon secret set [integration]
                        Guided setup for any supported collector;
                        omit integration for generic single-secret entry
+beacon secret test <integration>
+                       Run one bounded read-only vendor connection probe
 beacon secret import --stdin
                        Atomically import a bounded versioned credential bundle from a pipe
 beacon secret list     List configured secret names without revealing values

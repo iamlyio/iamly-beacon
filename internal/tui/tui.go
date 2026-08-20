@@ -16,6 +16,7 @@ type Action string
 const (
 	Configure Action = "configure"
 	Secrets   Action = "secrets"
+	Test      Action = "test"
 	Status    Action = "status"
 	Run       Action = "run"
 	Quit      Action = "quit"
@@ -44,6 +45,7 @@ var menuItems = []struct {
 }{
 	{"Configure", "Connect iamly.io and choose encrypted secret storage", Configure},
 	{"Store integration secret", "Enter a vendor credential using masked input", Secrets},
+	{"Test connection", "Check one saved credential without starting a review", Test},
 	{"Status", "Inspect the local Beacon without revealing secrets", Status},
 	{"Run", "Wait for review collection jobs", Run},
 	{"Quit", "Close Beacon", Quit},
@@ -92,6 +94,65 @@ func (m menuModel) View() tea.View {
 		view += fmt.Sprintf("%s%s\n    %s\n\n", marker, label, mutedStyle.Render(item.detail))
 	}
 	view += mutedStyle.Render("↑/↓ move  •  enter select  •  q quit")
+	return altScreenView(panel.Render(view))
+}
+
+type integrationModel struct {
+	names     []string
+	cursor    int
+	selected  string
+	cancelled bool
+}
+
+func SelectIntegration(names []string) (string, bool, error) {
+	if len(names) == 0 {
+		return "", false, nil
+	}
+	copyNames := append([]string(nil), names...)
+	sort.Strings(copyNames)
+	result, err := tea.NewProgram(integrationModel{names: copyNames}).Run()
+	if err != nil {
+		return "", false, err
+	}
+	final := result.(integrationModel)
+	return final.selected, !final.cancelled && final.selected != "", nil
+}
+
+func (m integrationModel) Init() tea.Cmd { return nil }
+
+func (m integrationModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
+	if key, ok := message.(tea.KeyPressMsg); ok {
+		switch key.String() {
+		case "ctrl+c", "q", "esc":
+			m.cancelled = true
+			return m, tea.Quit
+		case "up", "k":
+			if m.cursor > 0 {
+				m.cursor--
+			}
+		case "down", "j":
+			if m.cursor < len(m.names)-1 {
+				m.cursor++
+			}
+		case "enter":
+			m.selected = m.names[m.cursor]
+			return m, tea.Quit
+		}
+	}
+	return m, nil
+}
+
+func (m integrationModel) View() tea.View {
+	view := brand.Render("◆") + "  " + title.Render("Test connection") + "\n"
+	view += mutedStyle.Render("Choose one saved integration. No review data will be collected or sent.") + "\n\n"
+	for index, name := range m.names {
+		marker, label := "  ", name
+		if index == m.cursor {
+			marker, label = active.Render("› "), active.Render(name)
+		}
+		view += marker + label + "\n"
+	}
+	view += "\n" + mutedStyle.Render("↑/↓ move  •  enter test  •  esc cancel")
 	return altScreenView(panel.Render(view))
 }
 

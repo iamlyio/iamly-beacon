@@ -84,12 +84,14 @@ func TestPollSignsTheExactRequestAndParsesAJob(t *testing.T) {
 		var payload struct {
 			ProtocolVersion int      `json:"protocolVersion"`
 			Integrations    []string `json:"integrations"`
+			Capabilities    []string `json:"capabilities"`
 			Hostname        string   `json:"hostname"`
 			PrivateIPs      []string `json:"privateIps"`
 			Version         string   `json:"version"`
 		}
 		if json.Unmarshal(body, &payload) != nil || payload.ProtocolVersion != 1 ||
 			strings.Join(payload.Integrations, ",") != "github,google,slack" ||
+			strings.Join(payload.Capabilities, ",") != "integration_test_v1" ||
 			payload.Hostname == "" || payload.Version != "v1.2.3" {
 			t.Error("unexpected poll payload")
 		}
@@ -99,7 +101,7 @@ func TestPollSignsTheExactRequestAndParsesAJob(t *testing.T) {
 			}
 		}
 		response.Header().Set("Content-Type", "application/json")
-		io.WriteString(response, `{"protocolVersion":1,"job":{"id":"job_abcdefghijklmnopqrstuv","reviewRunId":42,"platforms":["github","google","slack"],"pendingPlatforms":["github","google","slack"],"leaseToken":"11111111-1111-4111-8111-111111111111","claimGeneration":1}}`)
+		io.WriteString(response, `{"protocolVersion":1,"job":{"id":"job_abcdefghijklmnopqrstuv","reviewRunId":42,"platforms":["github","google","slack"],"pendingPlatforms":["github","google","slack"],"leaseToken":"11111111-1111-4111-8111-111111111111","claimGeneration":1,"leaseExpiresAt":"2026-08-20T12:00:00.000Z"}}`)
 	}))
 	defer server.Close()
 	client := Client{BaseURL: server.URL, BeaconID: "bcn_abcdefghijklmnopqrstuv", PrivateKey: privateKey, Version: "v1.2.3", HTTPClient: server.Client()}
@@ -107,8 +109,25 @@ func TestPollSignsTheExactRequestAndParsesAJob(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if job == nil || job.ID != "job_abcdefghijklmnopqrstuv" || job.ReviewRunID != 42 {
+	if job == nil || job.Kind != "review" || job.ID != "job_abcdefghijklmnopqrstuv" || job.ReviewRunID != 42 {
 		t.Fatalf("unexpected job: %#v", job)
+	}
+}
+
+func TestPollParsesTypedIntegrationTestJob(t *testing.T) {
+	_, privateKey, _ := ed25519.GenerateKey(rand.Reader)
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+		response.Header().Set("Content-Type", "application/json")
+		io.WriteString(response, `{"protocolVersion":1,"job":{"kind":"integration_test","id":"tst_abcdefghijklmnopqrstuv","platform":"github","leaseToken":"11111111-1111-4111-8111-111111111111","claimGeneration":2,"leaseExpiresAt":"2026-08-20T12:00:00.000Z"}}`)
+	}))
+	defer server.Close()
+	client := Client{BaseURL: server.URL, BeaconID: "bcn_abcdefghijklmnopqrstuv", PrivateKey: privateKey, HTTPClient: server.Client()}
+	job, err := client.Poll(context.Background(), []string{"github"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if job == nil || job.Kind != "integration_test" || job.Platform != "github" || job.ID != "tst_abcdefghijklmnopqrstuv" {
+		t.Fatalf("integration test job = %#v", job)
 	}
 }
 
@@ -160,6 +179,81 @@ func TestJobValidationRejectsUnboundedOrUntrustedControlPlaneInput(t *testing.T)
 				t.Fatalf("invalid job accepted: %#v", job)
 			}
 		})
+	}
+}
+
+func TestIntegrationTestJobValidationIsTypedAndBounded(t *testing.T) {
+	valid := Job{
+		Kind: "integration_test", ID: "tst_abcdefghijklmnopqrstuv", Platform: "github",
+		LeaseToken: "11111111-1111-4111-8111-111111111111", ClaimGeneration: 1,
+		LeaseExpiresAt: "2026-08-20T12:00:00Z",
+	}
+	if !validJob(valid) {
+		t.Fatal("valid integration test job was rejected")
+	}
+	tests := map[string]func(*Job){
+		"unsafe ID":        func(job *Job) { job.ID = "tst_../../review" },
+		"review ID":        func(job *Job) { job.ID = "job_abcdefghijklmnopqrstuv" },
+		"unknown platform": func(job *Job) { job.Platform = "dropbox" },
+		"review payload":   func(job *Job) { job.Platforms = []string{"github"} },
+		"invalid expiry":   func(job *Job) { job.LeaseExpiresAt = "later" },
+		"unknown kind":     func(job *Job) { job.Kind = "command" },
+	}
+	for name, mutate := range tests {
+		t.Run(name, func(t *testing.T) {
+			job := valid
+			mutate(&job)
+			if validJob(job) {
+				t.Fatalf("invalid integration test job accepted: %#v", job)
+			}
+		})
+	}
+}
+
+func TestUploadIntegrationTestUsesDedicatedBoundedResult(t *testing.T) {
+	_, privateKey, _ := ed25519.GenerateKey(rand.Reader)
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		requests++
+		if request.URL.Path != "/api/v1/beacon/integration-tests/tst_abcdefghijklmnopqrstuv/results" {
+			t.Fatalf("result path = %s", request.URL.Path)
+		}
+		body, _ := io.ReadAll(request.Body)
+		if len(body) > maxTestResultBytes || strings.Contains(string(body), "members") || strings.Contains(string(body), "platform") {
+			t.Fatalf("unsafe test result = %s", body)
+		}
+		var payload struct {
+			ProtocolVersion int    `json:"protocolVersion"`
+			OK              bool   `json:"ok"`
+			ErrorCode       string `json:"errorCode"`
+			LeaseToken      string `json:"leaseToken"`
+			ClaimGeneration int64  `json:"claimGeneration"`
+		}
+		if json.Unmarshal(body, &payload) != nil || payload.ProtocolVersion != 1 || payload.OK ||
+			payload.ErrorCode != "permission_denied" || payload.ClaimGeneration != 1 {
+			t.Fatalf("result payload = %s", body)
+		}
+		response.Header().Set("Content-Type", "application/json")
+		io.WriteString(response, `{"ok":true}`)
+	}))
+	defer server.Close()
+	client := Client{BaseURL: server.URL, BeaconID: "bcn_abcdefghijklmnopqrstuv", PrivateKey: privateKey, HTTPClient: server.Client()}
+	job := Job{
+		Kind: "integration_test", ID: "tst_abcdefghijklmnopqrstuv", Platform: "github",
+		LeaseToken: "11111111-1111-4111-8111-111111111111", ClaimGeneration: 1,
+		LeaseExpiresAt: "2026-08-20T12:00:00Z",
+	}
+	if err := client.UploadIntegrationTest(context.Background(), job, false, "permission_denied"); err != nil {
+		t.Fatal(err)
+	}
+	if requests != 1 {
+		t.Fatalf("requests = %d, want one", requests)
+	}
+	if err := client.UploadIntegrationTest(context.Background(), job, true, "permission_denied"); err == nil {
+		t.Fatal("successful result accepted an error code")
+	}
+	if err := client.UploadIntegrationTest(context.Background(), job, false, "secret text"); err == nil {
+		t.Fatal("untrusted error code was accepted")
 	}
 }
 

@@ -16,6 +16,8 @@ import (
 
 type Collector func(context.Context, map[string]string) ([]protocol.Member, *protocol.Spend, error)
 
+type ConnectionTester func(context.Context, map[string]string) error
+
 var Supported = map[string]Collector{
 	"anthropic":  Anthropic,
 	"asana":      Asana,
@@ -131,17 +133,35 @@ func decodeVendorJSON(body io.Reader, maximumBytes int64, output any) error {
 }
 
 func responseError(platform string, response *http.Response) error {
-	if response.StatusCode == http.StatusUnauthorized || response.StatusCode == http.StatusForbidden {
-		return fmt.Errorf("%s rejected the local credential (HTTP %d)", platform, response.StatusCode)
-	}
-	return fmt.Errorf("%s API returned HTTP %d", platform, response.StatusCode)
+	return vendorHTTPError{platform: platform, status: response.StatusCode}
 }
 
 func vendorAPIError(platform, code string) error {
 	if vendorErrorCodePattern.MatchString(code) {
-		return fmt.Errorf("%s API rejected the request: %s", platform, code)
+		return vendorCodeError{platform: platform, code: code}
 	}
 	return fmt.Errorf("%s API rejected the request", platform)
+}
+
+type vendorHTTPError struct {
+	platform string
+	status   int
+}
+
+func (e vendorHTTPError) Error() string {
+	if e.status == http.StatusUnauthorized || e.status == http.StatusForbidden {
+		return fmt.Sprintf("%s rejected the local credential (HTTP %d)", e.platform, e.status)
+	}
+	return fmt.Sprintf("%s API returned HTTP %d", e.platform, e.status)
+}
+
+type vendorCodeError struct {
+	platform string
+	code     string
+}
+
+func (e vendorCodeError) Error() string {
+	return fmt.Sprintf("%s API rejected the request: %s", e.platform, e.code)
 }
 
 func stringPointer(value string) *string {

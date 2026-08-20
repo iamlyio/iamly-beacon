@@ -38,6 +38,7 @@ const (
 	maxCredentialImportEntries = 256
 	maxCredentialValueBytes    = 256 << 10
 	collectorTimeout           = 10 * time.Minute
+	connectionTestTimeout      = 30 * time.Second
 )
 
 type App struct {
@@ -49,6 +50,7 @@ type App struct {
 	enroller          beaconEnroller
 	generateIdentity  func() (enrollment.Identity, error)
 	collectionTimeout time.Duration
+	connectionTimeout time.Duration
 	upgrade           func(context.Context, string, []string, io.Writer) error
 }
 
@@ -90,6 +92,7 @@ func New(version string) (*App, error) {
 		enroller:          enrollment.Client{},
 		generateIdentity:  enrollment.GenerateIdentity,
 		collectionTimeout: collectorTimeout,
+		connectionTimeout: connectionTestTimeout,
 		upgrade:           upgradeClient.Run,
 	}, nil
 }
@@ -114,17 +117,19 @@ func (a *App) Execute(ctx context.Context, arguments []string) error {
 		return a.configure(ctx, arguments[1:])
 	case "secret":
 		if len(arguments) < 2 {
-			return errors.New("use beacon secret set, beacon secret import --stdin, or beacon secret list")
+			return errors.New("use beacon secret set, beacon secret test, beacon secret import --stdin, or beacon secret list")
 		}
 		switch arguments[1] {
 		case "set":
 			return a.storeSecret(ctx, arguments[2:])
+		case "test":
+			return a.testSecret(ctx, arguments[2:])
 		case "import":
 			return a.importSecrets(ctx, arguments[2:])
 		case "list":
 			return a.listSecrets(ctx)
 		default:
-			return errors.New("use beacon secret set, beacon secret import --stdin, or beacon secret list")
+			return errors.New("use beacon secret set, beacon secret test, beacon secret import --stdin, or beacon secret list")
 		}
 	case "status":
 		return a.status(ctx)
@@ -149,6 +154,8 @@ func (a *App) execute(ctx context.Context, action tui.Action) error {
 		return a.configure(ctx, nil)
 	case tui.Secrets:
 		return a.storeSecret(ctx, nil)
+	case tui.Test:
+		return a.testSecret(ctx, nil)
 	case tui.Status:
 		return a.status(ctx)
 	case tui.Run:
@@ -156,6 +163,62 @@ func (a *App) execute(ctx context.Context, action tui.Action) error {
 	default:
 		return nil
 	}
+}
+
+func (a *App) testSecret(ctx context.Context, arguments []string) error {
+	if len(arguments) > 1 {
+		return errors.New("use beacon secret test <integration>")
+	}
+	_, data, kms, err := a.openVault(ctx)
+	if err != nil {
+		return err
+	}
+	defer kms.Close()
+
+	integration := ""
+	if len(arguments) == 1 {
+		integration = strings.ToLower(strings.TrimSpace(arguments[0]))
+	} else {
+		configured := configuredTestableIntegrations(data.Integrations)
+		if len(configured) == 0 {
+			return errors.New("no supported integration credentials are configured")
+		}
+		selected, ok, selectErr := tui.SelectIntegration(configured)
+		if selectErr != nil || !ok {
+			return selectErr
+		}
+		integration = selected
+	}
+	if _, supported := collector.ConnectionTesters[integration]; !supported {
+		return fmt.Errorf("integration %q does not support connection tests", integration)
+	}
+	credentials := data.Integrations[integration]
+	if credentials == nil {
+		return fmt.Errorf("integration %q is not configured", integration)
+	}
+	timeout := a.connectionTimeout
+	if timeout <= 0 {
+		timeout = connectionTestTimeout
+	}
+	testCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	if err := collector.TestConnection(testCtx, integration, credentials); err != nil {
+		code := collector.ConnectionErrorCodeOf(err)
+		return fmt.Errorf("%s connection test failed: %s", integration, code)
+	}
+	fmt.Fprintf(a.output(), "✓ %s connection verified · minimum read access available\n", integration)
+	return nil
+}
+
+func configuredTestableIntegrations(credentials map[string]map[string]string) []string {
+	integrations := make([]string, 0, len(credentials))
+	for integration := range credentials {
+		if _, supported := collector.ConnectionTesters[integration]; supported {
+			integrations = append(integrations, integration)
+		}
+	}
+	sort.Strings(integrations)
+	return integrations
 }
 
 func (a *App) storeSecret(ctx context.Context, arguments []string) error {
@@ -553,10 +616,46 @@ func (a *App) run(ctx context.Context) error {
 		if job == nil {
 			continue
 		}
+		if job.Kind == "integration_test" {
+			if err := a.executeIntegrationTestJob(ctx, client, *job, data.Integrations); err != nil {
+				fmt.Fprintf(a.output(), "Integration test %s finished with a transport error: %s\n", job.ID, err)
+			}
+			continue
+		}
 		if err := a.executeBeaconJob(ctx, client, *job, data.Integrations); err != nil {
 			fmt.Fprintf(a.output(), "Review job %s finished with a transport error: %s\n", job.ID, err)
 		}
 	}
+}
+
+func (a *App) executeIntegrationTestJob(ctx context.Context, client protocol.Client, job protocol.Job, credentials map[string]map[string]string) error {
+	timeout := a.connectionTimeout
+	if timeout <= 0 {
+		timeout = connectionTestTimeout
+	}
+	testCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	ok := false
+	errorCode := collector.InvalidConfiguration
+	if localCredentials := credentials[job.Platform]; localCredentials != nil {
+		err := collector.TestConnection(testCtx, job.Platform, localCredentials)
+		if err == nil {
+			ok = true
+			errorCode = ""
+		} else {
+			errorCode = collector.ConnectionErrorCodeOf(err)
+		}
+	}
+	if err := client.UploadIntegrationTest(ctx, job, ok, string(errorCode)); err != nil {
+		return fmt.Errorf("upload integration test result: %w", err)
+	}
+	if ok {
+		fmt.Fprintf(a.output(), "Integration test %s · %s connection verified\n", job.ID, job.Platform)
+	} else {
+		fmt.Fprintf(a.output(), "Integration test %s · %s failed · %s\n", job.ID, job.Platform, errorCode)
+	}
+	return nil
 }
 
 func (a *App) executeBeaconJob(ctx context.Context, client protocol.Client, job protocol.Job, credentials map[string]map[string]string) error {
@@ -843,6 +942,8 @@ Usage:
                          Configure noninteractively; cloud KMS backends require --kms-key
   beacon secret set [integration]
                          Configure one supported integration through guided prompts
+  beacon secret test <integration>
+                         Verify one saved credential with a bounded read-only vendor request
   beacon secret import --stdin
                          Import a versioned JSON credential bundle only from stdin
   beacon secret list     List secret names without revealing their values
