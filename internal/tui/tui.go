@@ -152,6 +152,13 @@ var guidedSecretSpecs = map[string]guidedSecretSpec{
 			{name: "token", label: "SCIM token", placeholder: "paste SCIM token", secret: true},
 		},
 	},
+	"cloudflare": {
+		label: "Cloudflare",
+		fields: []guidedSecretField{
+			{name: "accountId", label: "Account ID", placeholder: "32-character account ID"},
+			{name: "token", label: "API token", placeholder: "paste read-only API token", secret: true},
+		},
+	},
 	"dockerhub": {
 		label: "Docker Hub",
 		fields: []guidedSecretField{

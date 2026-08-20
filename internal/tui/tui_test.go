@@ -7,26 +7,27 @@ import (
 
 func TestGuidedSecretProfiles(t *testing.T) {
 	want := map[string][]string{
-		"anthropic": {"adminApiKey"},
-		"asana":     {"token", "workspaceGid"},
-		"bamboohr":  {"companyDomain", "apiKey"},
-		"canva":     {"token"},
-		"dockerhub": {"identifier", "secret", "org"},
-		"figma":     {"token", "tenantId"},
-		"gcp":       {"clientEmail", "resourceScope", "privateKey"},
-		"github":    {"org", "token"},
-		"google":    {"clientEmail", "adminEmail", "privateKey"},
-		"linear":    {"apiKey"},
-		"notion":    {"token"},
-		"npmjs":     {"token", "org"},
-		"openai":    {"adminApiKey"},
-		"slack":     {"userToken"},
-		"tailscale": {"clientId", "clientSecret"},
-		"twingate":  {"network", "apiToken"},
-		"vercel":    {"token", "teamId"},
-		"zoom":      {"accountId", "clientId", "clientSecret"},
+		"anthropic":  {"adminApiKey"},
+		"asana":      {"token", "workspaceGid"},
+		"bamboohr":   {"companyDomain", "apiKey"},
+		"canva":      {"token"},
+		"cloudflare": {"accountId", "token"},
+		"dockerhub":  {"identifier", "secret", "org"},
+		"figma":      {"token", "tenantId"},
+		"gcp":        {"clientEmail", "resourceScope", "privateKey"},
+		"github":     {"org", "token"},
+		"google":     {"clientEmail", "adminEmail", "privateKey"},
+		"linear":     {"apiKey"},
+		"notion":     {"token"},
+		"npmjs":      {"token", "org"},
+		"openai":     {"adminApiKey"},
+		"slack":      {"userToken"},
+		"tailscale":  {"clientId", "clientSecret"},
+		"twingate":   {"network", "apiToken"},
+		"vercel":     {"token", "teamId"},
+		"zoom":       {"accountId", "clientId", "clientSecret"},
 	}
-	if got := GuidedIntegrationNames(); !reflect.DeepEqual(got, []string{"anthropic", "asana", "bamboohr", "canva", "dockerhub", "figma", "gcp", "github", "google", "linear", "notion", "npmjs", "openai", "slack", "tailscale", "twingate", "vercel", "zoom"}) {
+	if got := GuidedIntegrationNames(); !reflect.DeepEqual(got, []string{"anthropic", "asana", "bamboohr", "canva", "cloudflare", "dockerhub", "figma", "gcp", "github", "google", "linear", "notion", "npmjs", "openai", "slack", "tailscale", "twingate", "vercel", "zoom"}) {
 		t.Fatalf("guided integrations = %v", got)
 	}
 	for integration, fields := range want {

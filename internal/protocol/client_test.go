@@ -137,7 +137,7 @@ func TestJobValidationRejectsUnboundedOrUntrustedControlPlaneInput(t *testing.T)
 		"unknown platform":   func(job *Job) { job.Platforms = []string{"dropbox"} },
 		"duplicate platform": func(job *Job) { job.Platforms = []string{"github", "github"} },
 		"too many platforms": func(job *Job) {
-			job.Platforms = []string{"anthropic", "asana", "bamboohr", "canva", "figma", "gcp", "github", "google", "linear", "notion", "openai", "slack", "tailscale", "twingate", "vercel", "zoom", "github"}
+			job.Platforms = []string{"anthropic", "asana", "bamboohr", "canva", "cloudflare", "dockerhub", "figma", "gcp", "github", "google", "linear", "notion", "npmjs", "openai", "slack", "tailscale", "twingate", "vercel", "zoom", "github"}
 		},
 		"empty pending platforms": func(job *Job) { job.PendingPlatforms = nil },
 		"unknown pending platform": func(job *Job) {

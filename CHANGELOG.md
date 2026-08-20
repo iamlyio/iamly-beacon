@@ -3,6 +3,16 @@
 All notable changes to IAMly Beacon are documented here. The project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0-rc.5] - 2026-08-20
+
+### Added
+
+- Cloudflare account-member collection through a dedicated API token with
+  Account Settings Read, including invitation status, roles, and permission
+  groups.
+- Guided local-vault setup and least-privilege configuration documentation for
+  Cloudflare.
+
 ## [2.2.0-rc.4] - 2026-08-19
 
 ### Changed
@@ -86,8 +96,9 @@ All notable changes to IAMly Beacon are documented here. The project follows
 - Initial Beacon collector, encrypted GCP KMS-backed vault, enrollment flow,
   signed control-plane protocol, and core SaaS collectors.
 
-[2.2.0-rc.3]: https://github.com/iamlyio/iamly-beacon/releases/tag/v2.2.0-rc.3
+[2.2.0-rc.5]: https://github.com/iamlyio/iamly-beacon/releases/tag/v2.2.0-rc.5
 [2.2.0-rc.4]: https://github.com/iamlyio/iamly-beacon/releases/tag/v2.2.0-rc.4
+[2.2.0-rc.3]: https://github.com/iamlyio/iamly-beacon/releases/tag/v2.2.0-rc.3
 [2.2.0-rc.2]: https://github.com/iamlyio/iamly-beacon/releases/tag/v2.2.0-rc.2
 [2.2.0-rc.1]: https://github.com/iamlyio/iamly-beacon/releases/tag/v2.2.0-rc.1
 [2.1.1]: https://github.com/iamlyio/iamly-beacon/blob/main/CHANGELOG.md#211---2026-08-18

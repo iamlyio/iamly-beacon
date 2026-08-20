@@ -212,6 +212,7 @@ version from `VERSION`; `make build` stamps that value into `beacon version`.
 | Vercel | `vercel.token`, `vercel.teamId` | Team members, roles, and pending email invitations |
 | Asana | `asana.token`, `asana.workspaceGid` | Users visible in one workspace or organization |
 | Canva | `canva.token` | SCIM-managed team users and lifecycle status |
+| Cloudflare | `cloudflare.accountId`, `cloudflare.token` | Account members, invitation status, roles, and permission groups |
 | npm | `npmjs.token`, `npmjs.org` | Organization members and roles |
 | Docker Hub | `dockerhub.identifier`, `dockerhub.secret`, `dockerhub.org` | Organization members, roles, and recent activity |
 
@@ -219,6 +220,7 @@ Each supported collector has guided credential setup:
 
 ```sh
 beacon secret set bamboohr
+beacon secret set cloudflare
 beacon secret set gcp
 beacon secret set github
 beacon secret set google
