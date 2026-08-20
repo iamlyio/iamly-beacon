@@ -3,6 +3,22 @@
 All notable changes to IAMly Beacon are documented here. The project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0-rc.7] - 2026-08-20
+
+### Added
+
+- Bounded, read-only connection probes for all supported integrations through
+  `beacon secret test <integration>` and capability-gated tests requested from
+  the IAMly control plane. Provider data and credentials remain local; only a
+  sanitized outcome is returned.
+- A success message after the first acknowledged control-plane heartbeat and
+  after a connection recovers, without logging every successful poll.
+
+### Changed
+
+- Worker startup now reports that Beacon is starting instead of claiming a
+  control-plane connection before the first acknowledged heartbeat.
+
 ## [2.2.0-rc.6] - 2026-08-20
 
 ### Changed
@@ -106,6 +122,7 @@ All notable changes to IAMly Beacon are documented here. The project follows
 - Initial Beacon collector, encrypted GCP KMS-backed vault, enrollment flow,
   signed control-plane protocol, and core SaaS collectors.
 
+[2.2.0-rc.7]: https://github.com/iamlyio/iamly-beacon/releases/tag/v2.2.0-rc.7
 [2.2.0-rc.6]: https://github.com/iamlyio/iamly-beacon/releases/tag/v2.2.0-rc.6
 [2.2.0-rc.5]: https://github.com/iamlyio/iamly-beacon/releases/tag/v2.2.0-rc.5
 [2.2.0-rc.4]: https://github.com/iamlyio/iamly-beacon/releases/tag/v2.2.0-rc.4
