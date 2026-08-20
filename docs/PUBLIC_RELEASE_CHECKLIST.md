@@ -50,12 +50,12 @@ Use this checklist for each public prerelease and stable release.
 
 ## Publish
 
-- [ ] Commit and push the release-preparation changes; wait for CI to pass.
-- [ ] Create the signed annotated tag following [RELEASING.md](RELEASING.md).
-- [ ] Confirm the release workflow publishes six archives, `SHA256SUMS`, and the
+- [x] Commit and push the release-preparation changes; wait for CI to pass.
+- [x] Create the signed annotated tag following [RELEASING.md](RELEASING.md).
+- [x] Confirm the release workflow publishes six archives, `SHA256SUMS`, and the
   CycloneDX SBOM.
-- [ ] Verify GitHub provenance for at least one artifact on each operating
+- [x] Verify GitHub provenance for at least one artifact on each operating
   system.
-- [ ] Confirm the README's latest-release download links work without GitHub
+- [x] Confirm the README's latest-release download links work without GitHub
   authentication.
 - [ ] Announce the release only after a clean install and enrollment smoke test.
