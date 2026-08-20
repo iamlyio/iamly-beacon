@@ -1,9 +1,9 @@
 # Beacon architecture
 
-Beacon is iamly.io's customer-hosted collection boundary.
+Beacon is IAMly's customer-hosted collection boundary.
 
 ```text
-iamly.io SaaS                         Customer infrastructure
+IAMly control plane                  Customer infrastructure
 ───────────                          ───────────────────────
 Create review job  ◀── outbound ───  Beacon long-polls for work
 Receive observations ◀─────────────  Vendor APIs + local enrichment
@@ -13,7 +13,7 @@ Apply policy and human decisions
 Create findings and evidence
 ```
 
-The control plane may only request fixed, versioned collection operations. It must never send shell commands, scripts, arbitrary URLs, or executable code. Beacon will contact only its configured iamly.io control plane and compiled-in vendor API hosts.
+The control plane may only request fixed, versioned collection operations. It must never send shell commands, scripts, arbitrary URLs, or executable code. Beacon will contact only its configured IAMly control plane and compiled-in vendor API hosts.
 
 ## Provider-backed envelope encryption
 
@@ -45,4 +45,4 @@ only after the new provider passes a wrap/unwrap self-test.
 
 ## Trust boundary
 
-Beacon may upload minimized source observations necessary for a review: vendor account identifiers, status, roles, memberships, last activity, and billing observations. Integration credentials never leave Beacon and must never appear in logs or status output.
+Beacon uploads the account data required for a review: vendor account identifiers, status, roles, memberships, last activity, and billing observations. Integration credentials never leave Beacon and must never appear in logs or status output.

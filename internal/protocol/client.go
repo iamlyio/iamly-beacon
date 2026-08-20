@@ -20,6 +20,7 @@ import (
 
 const (
 	maxResponseBytes       = 1 << 20
+	maxResultUploadBytes   = 32 << 20
 	resultUploadAttempts   = 3
 	resultUploadRetryDelay = 250 * time.Millisecond
 	maxControlPlaneError   = 64
@@ -229,6 +230,9 @@ func (c Client) Upload(ctx context.Context, job Job, result Result) error {
 	}{Result: result, LeaseToken: job.LeaseToken, ClaimGeneration: job.ClaimGeneration})
 	if err != nil {
 		return errors.New("encode collection result")
+	}
+	if len(body) > maxResultUploadBytes {
+		return fmt.Errorf("collection result exceeds the %d MiB upload limit", maxResultUploadBytes>>20)
 	}
 	path := "/api/v1/beacon/jobs/" + url.PathEscape(job.ID) + "/results"
 	for attempt := 0; attempt < resultUploadAttempts; attempt++ {

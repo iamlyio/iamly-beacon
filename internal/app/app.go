@@ -32,22 +32,22 @@ var credentialNamePattern = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_-]{0,63}$`)
 var beaconIDPattern = regexp.MustCompile(`^bcn_[A-Za-z0-9_-]{22}$`)
 
 const (
-	productionControlPlane     = "https://beacon.iamly.io"
-	developmentControlPlane    = "https://beacon-dev.iamly.io"
+	betaControlPlane           = "https://beacon-beta.iamly.io"
 	maxCredentialImportBytes   = 1 << 20
 	maxCredentialImportEntries = 256
 	maxCredentialValueBytes    = 256 << 10
+	collectorTimeout           = 10 * time.Minute
 )
 
 type App struct {
-	version          string
-	paths            config.Paths
-	stdin            io.Reader
-	stdout           io.Writer
-	newKMS           func(context.Context) (kmsWrapper, error)
-	newKeyWrapper    func(context.Context, vault.Provider, string, bool) (kmsWrapper, error)
-	enroller         beaconEnroller
-	generateIdentity func() (enrollment.Identity, error)
+	version           string
+	paths             config.Paths
+	stdin             io.Reader
+	stdout            io.Writer
+	newKeyWrapper     func(context.Context, vault.Provider, string, bool) (kmsWrapper, error)
+	enroller          beaconEnroller
+	generateIdentity  func() (enrollment.Identity, error)
+	collectionTimeout time.Duration
 }
 
 type kmsWrapper interface {
@@ -69,9 +69,6 @@ func New(version string) (*App, error) {
 		paths:   paths,
 		stdin:   os.Stdin,
 		stdout:  os.Stdout,
-		newKMS: func(ctx context.Context) (kmsWrapper, error) {
-			return vault.NewGCPKMS(ctx)
-		},
 		newKeyWrapper: func(ctx context.Context, provider vault.Provider, keyName string, create bool) (kmsWrapper, error) {
 			switch provider {
 			case vault.ProviderLocal:
@@ -87,19 +84,15 @@ func New(version string) (*App, error) {
 				return nil, fmt.Errorf("unsupported vault key provider %q", provider)
 			}
 		},
-		enroller:         enrollment.Client{},
-		generateIdentity: enrollment.GenerateIdentity,
+		enroller:          enrollment.Client{},
+		generateIdentity:  enrollment.GenerateIdentity,
+		collectionTimeout: collectorTimeout,
 	}, nil
 }
 
 func (a *App) keyWrapper(ctx context.Context, provider vault.Provider, keyName string, create bool) (kmsWrapper, error) {
 	if a.newKeyWrapper != nil {
 		return a.newKeyWrapper(ctx, provider, keyName, create)
-	}
-	// Retained for tests and compatibility with applications embedding the
-	// pre-provider App shape. Those callers can only open Google KMS vaults.
-	if provider == vault.ProviderGoogleKMS && a.newKMS != nil {
-		return a.newKMS(ctx)
 	}
 	return nil, fmt.Errorf("vault key provider %q is not configured", provider)
 }
@@ -423,10 +416,7 @@ func (a *App) configure(ctx context.Context, arguments []string) error {
 	if provider == vault.ProviderLocal {
 		initial.KeyName = vault.LocalKeyName
 	}
-	initial.Data.ControlPlane.URL = productionControlPlane
-	if options.dev {
-		initial.Data.ControlPlane.URL = developmentControlPlane
-	}
+	initial.Data.ControlPlane.URL = betaControlPlane
 
 	var result tui.SetupResult
 	if !options.nonInteractive {
@@ -603,8 +593,13 @@ func (a *App) executeBeaconJob(ctx context.Context, client protocol.Client, job 
 		wait.Add(1)
 		go func() {
 			defer wait.Done()
-			capturedAt := time.Now().UTC().Format(time.RFC3339Nano)
-			result := protocol.Result{Platform: platform, CapturedAt: capturedAt, Members: []protocol.Member{}}
+			timeout := a.collectionTimeout
+			if timeout <= 0 {
+				timeout = collectorTimeout
+			}
+			collectionCtx, stopCollection := context.WithTimeout(jobCtx, timeout)
+			defer stopCollection()
+			result := protocol.Result{Platform: platform, Members: []protocol.Member{}}
 			collect, supported := collector.Supported[platform]
 			localCredentials := credentials[platform]
 			if !supported || localCredentials == nil {
@@ -614,20 +609,24 @@ func (a *App) executeBeaconJob(ctx context.Context, client protocol.Client, job 
 				// A collector returns only after its app-specific profile, activity,
 				// role, and billing enrichment is complete. Upload that normalized
 				// app snapshot immediately; never wait for sibling connectors.
-				members, spend, err := collect(jobCtx, localCredentials)
+				members, spend, err := collect(collectionCtx, localCredentials)
 				if err != nil {
 					message := err.Error()
+					if errors.Is(collectionCtx.Err(), context.DeadlineExceeded) {
+						message = "collection exceeded the 10 minute deadline"
+					}
 					result.Error = &message
 				} else {
 					result.Members = members
 					result.ObservedSpend = spend
 					if platform == "github" {
-						deployKeys, coverage := collector.GitHubDeployKeys(jobCtx, localCredentials)
+						deployKeys, coverage := collector.GitHubDeployKeys(collectionCtx, localCredentials)
 						result.DeployKeys = deployKeys
 						result.DeployKeyCoverage = &coverage
 					}
 				}
 			}
+			result.CapturedAt = time.Now().UTC().Format(time.RFC3339Nano)
 			if err := client.Upload(jobCtx, job, result); err != nil {
 				errorsChannel <- fmt.Errorf("upload %s result: %w", platform, err)
 				return
@@ -667,8 +666,8 @@ func validateSetup(result, initial tui.SetupResult, hasVault bool, version strin
 	default:
 		return errors.New("choose local, Google KMS, or AWS KMS vault storage")
 	}
-	if result.Data.ControlPlane.URL != productionControlPlane && result.Data.ControlPlane.URL != developmentControlPlane {
-		return errors.New("Beacon control plane must be the iamly.io production or development service")
+	if result.Data.ControlPlane.URL != betaControlPlane {
+		return errors.New("Beacon control plane must be the IAMly beta service")
 	}
 	name := strings.TrimSpace(result.Data.ControlPlane.BeaconName)
 	if invalidDisplayText(name, 80) {
@@ -740,7 +739,6 @@ type configureOptions struct {
 	provider         vault.Provider
 	providerExplicit bool
 	nonInteractive   bool
-	dev              bool
 	keyName          string
 	name             string
 	tokenFromStdin   bool
@@ -752,7 +750,6 @@ func parseConfigureOptions(arguments []string) (configureOptions, error) {
 	local := flags.Bool("local", false, "protect the vault with a local key file")
 	googleKMS := flags.Bool("google-kms", false, "protect the vault with Google Cloud KMS")
 	awsKMS := flags.Bool("aws-kms", false, "protect the vault with AWS KMS")
-	dev := flags.Bool("dev", false, "connect to the iamly.io development control plane")
 	keyName := flags.String("kms-key", "", "Google Cloud or AWS KMS key identifier")
 	name := flags.String("name", "", "Beacon name")
 	tokenFromStdin := flags.Bool("enrollment-token-stdin", false, "read the enrollment token from stdin")
@@ -764,7 +761,6 @@ func parseConfigureOptions(arguments []string) (configureOptions, error) {
 	}
 	selected := 0
 	options := configureOptions{
-		dev:            *dev,
 		keyName:        strings.TrimSpace(*keyName),
 		name:           strings.TrimSpace(*name),
 		tokenFromStdin: *tokenFromStdin,
@@ -831,13 +827,13 @@ func wipe(value []byte) {
 }
 
 func printHelp() {
-	fmt.Print(`Beacon — iamly.io customer-hosted collector
+	fmt.Print(`Beacon — IAMly customer-hosted collector
 
 Usage:
   beacon                 Open the terminal interface
-  beacon configure [--local | --google-kms | --aws-kms] [--dev]
-                         Configure interactively; production is the default control plane
-  beacon configure [STORAGE] [--dev] --name NAME [--kms-key KEY] [--enrollment-token-stdin]
+  beacon configure [--local | --google-kms | --aws-kms]
+                         Configure interactively against the IAMly beta control plane
+  beacon configure [STORAGE] --name NAME [--kms-key KEY] [--enrollment-token-stdin]
                          Configure noninteractively; cloud KMS backends require --kms-key
   beacon secret set [integration]
                          Configure one supported integration through guided prompts

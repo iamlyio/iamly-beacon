@@ -1,7 +1,17 @@
 # Changelog
 
-All notable changes to iamly Beacon are documented here. The project follows
+All notable changes to IAMly Beacon are documented here. The project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [2.2.0-rc.4] - 2026-08-19
+
+### Changed
+
+- The beta control plane is now the only supported enrollment and polling
+  target; retired development routes are no longer accepted.
+- Each collector has a ten-minute deadline, and evidence capture time is
+  recorded after collection finishes.
+- Collection results have a tested 32 MiB client-side upload boundary.
 
 ## [2.2.0-rc.3] - 2026-08-19
 
@@ -77,6 +87,7 @@ All notable changes to iamly Beacon are documented here. The project follows
   signed control-plane protocol, and core SaaS collectors.
 
 [2.2.0-rc.3]: https://github.com/iamlyio/iamly-beacon/releases/tag/v2.2.0-rc.3
+[2.2.0-rc.4]: https://github.com/iamlyio/iamly-beacon/releases/tag/v2.2.0-rc.4
 [2.2.0-rc.2]: https://github.com/iamlyio/iamly-beacon/releases/tag/v2.2.0-rc.2
 [2.2.0-rc.1]: https://github.com/iamlyio/iamly-beacon/releases/tag/v2.2.0-rc.1
 [2.1.1]: https://github.com/iamlyio/iamly-beacon/blob/main/CHANGELOG.md#211---2026-08-18

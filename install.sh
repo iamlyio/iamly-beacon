@@ -1,17 +1,16 @@
 #!/bin/sh
 set -eu
 
-version="${IAMLY_BEACON_VERSION:-v2.2.0-rc.3}"
+version="${IAMLY_BEACON_VERSION:-v2.2.0-rc.4}"
 install_dir="${IAMLY_BEACON_INSTALL_DIR:-${HOME}/.local/bin}"
 release_base="${IAMLY_BEACON_RELEASE_BASE:-https://github.com/iamlyio/iamly-beacon/releases/download}"
 configure=true
-dev=false
 
 usage() {
   cat <<'EOF'
 Install iamly Beacon from a checksum-verified GitHub Release.
 
-Usage: install.sh [--version TAG] [--install-dir DIRECTORY] [--dev] [--no-configure]
+Usage: install.sh [--version TAG] [--install-dir DIRECTORY] [--no-configure]
 
 Environment:
   IAMLY_BEACON_VERSION       Release tag to install
@@ -34,10 +33,6 @@ while [ "$#" -gt 0 ]; do
       ;;
     --no-configure)
       configure=false
-      shift
-      ;;
-    --dev)
-      dev=true
       shift
       ;;
     -h|--help)
@@ -167,19 +162,10 @@ esac
 
 if [ "$configure" = true ]; then
   if [ -t 1 ] && [ -r /dev/tty ] && [ -w /dev/tty ]; then
-    if [ "$dev" = true ]; then
-      printf '\nStarting guided setup against https://beacon-dev.iamly.io.\n' >/dev/tty
-      "$install_dir/beacon" configure --local --dev </dev/tty >/dev/tty 2>/dev/tty
-    else
-      printf '\nStarting guided setup against https://beacon.iamly.io.\n' >/dev/tty
-      "$install_dir/beacon" configure --local </dev/tty >/dev/tty 2>/dev/tty
-    fi
+    printf '\nStarting guided setup against https://beacon-beta.iamly.io.\n' >/dev/tty
+    "$install_dir/beacon" configure --local </dev/tty >/dev/tty 2>/dev/tty
   else
-    if [ "$dev" = true ]; then
-      printf '\nInstallation complete. Run this from an interactive terminal:\n  beacon configure --local --dev\n'
-    else
-      printf '\nInstallation complete. Run this from an interactive terminal:\n  beacon configure --local\n'
-    fi
+    printf '\nInstallation complete. Run this from an interactive terminal:\n  beacon configure --local\n'
   fi
 fi
 

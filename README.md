@@ -1,24 +1,22 @@
-# iamly.io Beacon
+# IAMly Beacon
 
 [![CI](https://github.com/iamlyio/iamly-beacon/actions/workflows/ci.yml/badge.svg)](https://github.com/iamlyio/iamly-beacon/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-Beacon is iamly.io's customer-hosted collector. It gathers and enriches identity, account, access, and billing data inside the customer's infrastructure, then sends minimized observations to iamly.io. Vendor credentials never leave the customer environment.
+Beacon is IAMly's customer-hosted collector. It gathers and normalizes identity, account, access, and billing data inside the customer's infrastructure, then sends the account data to IAMly. Vendor credentials never leave the customer environment.
 
 [Beacon repository](https://github.com/iamlyio/iamly-beacon) ·
 [Product domain](https://iamly.io)
 
-Beacon connects to the production control plane at `https://beacon.iamly.io`
-by default. Pass `--dev` during installation or configuration to use
-`https://beacon-dev.iamly.io`. The current release candidate is intended for
-testing, not production use.
+Beacon connects to the beta control plane at `https://beacon-beta.iamly.io`.
+The current release candidate is intended for beta testing, not production use.
 Each signed poll reports the host name, private interface addresses, and Beacon
-version; iamly.io observes the public source address at its trusted reverse
+version; IAMly observes the public source address at its trusted reverse
 proxy. No vendor credential or signing private key is included.
 
 ## Quick start
 
-First, open **Integrations → Beacon** in your iamly workspace and create a
+First, open **Integrations → Beacon** in your IAMly workspace and create a
 single-use enrollment token. Then run the guided installer on the Linux or
 macOS server that will host Beacon:
 
@@ -27,15 +25,8 @@ curl --proto '=https' --tlsv1.2 -fsSL \
   https://raw.githubusercontent.com/iamlyio/iamly-beacon/main/install.sh | sh
 ```
 
-The installer uses `https://beacon.iamly.io`. For development, create the token
-in [iamly development](https://app-dev.iamly.io) and select the development
-control plane explicitly:
-
-```sh
-curl --proto '=https' --tlsv1.2 -fsSL \
-  https://raw.githubusercontent.com/iamlyio/iamly-beacon/main/install.sh \
-  | sh -s -- --dev
-```
+The installer uses `https://beacon-beta.iamly.io`. Create the token in the
+[IAMly open beta](https://beta.iamly.io).
 
 The installer:
 
@@ -71,7 +62,6 @@ curl --proto '=https' --tlsv1.2 -fsSL \
 
 beacon configure --google-kms
 # or: beacon configure --aws-kms
-# add --dev to either command for development
 ```
 
 Piping a remote script into a shell trusts the GitHub repository and delivery
@@ -80,7 +70,7 @@ installation below when that trust model is not appropriate.
 
 ## Manual download and verification
 
-[GitHub Releases](https://github.com/iamlyio/iamly-beacon/releases/tag/v2.2.0-rc.3)
+[GitHub Releases](https://github.com/iamlyio/iamly-beacon/releases/tag/v2.2.0-rc.4)
 provides ready-to-run binaries with no language runtime to install. Choose the
 archive matching the server that will keep your application credentials:
 
@@ -96,7 +86,7 @@ For a typical Intel/AMD Linux host:
 
 ```sh
 archive=iamly-beacon_linux_amd64.tar.gz
-base=https://github.com/iamlyio/iamly-beacon/releases/download/v2.2.0-rc.3
+base=https://github.com/iamlyio/iamly-beacon/releases/download/v2.2.0-rc.4
 curl --fail --location --remote-name "$base/$archive"
 curl --fail --location --remote-name "$base/SHA256SUMS"
 grep " $archive\$" SHA256SUMS > SHA256SUMS.selected
@@ -115,7 +105,7 @@ Use `darwin_arm64` on Apple silicon or `darwin_amd64` on an Intel Mac:
 
 ```sh
 archive=iamly-beacon_darwin_arm64.tar.gz
-base=https://github.com/iamlyio/iamly-beacon/releases/download/v2.2.0-rc.3
+base=https://github.com/iamlyio/iamly-beacon/releases/download/v2.2.0-rc.4
 curl --fail --location --remote-name "$base/$archive"
 curl --fail --location --remote-name "$base/SHA256SUMS"
 grep " $archive\$" SHA256SUMS > SHA256SUMS.selected
@@ -133,7 +123,7 @@ ARM:
 
 ```powershell
 $Archive = "iamly-beacon_windows_amd64.zip"
-$Base = "https://github.com/iamlyio/iamly-beacon/releases/download/v2.2.0-rc.3"
+$Base = "https://github.com/iamlyio/iamly-beacon/releases/download/v2.2.0-rc.4"
 Invoke-WebRequest "$Base/$Archive" -OutFile $Archive
 Invoke-WebRequest "$Base/SHA256SUMS" -OutFile "SHA256SUMS"
 $Expected = ((Select-String -Path "SHA256SUMS" -Pattern " $Archive$").Line -split "\s+")[0]
@@ -156,8 +146,7 @@ gh attestation verify "$archive" --repo iamlyio/iamly-beacon
 ```
 
 After a manual installation, run `beacon configure --local` and continue with
-the collector and worker commands in [Quick start](#quick-start). Add `--dev`
-to use the development control plane. Use
+the collector and worker commands in [Quick start](#quick-start). Use
 `beacon configure --google-kms` or `beacon configure --aws-kms` when the
 wrapping key must remain in a cloud KMS.
 
@@ -179,13 +168,13 @@ version from `VERSION`; `make build` stamps that value into `beacon version`.
 - Application Default Credentials, AWS's default credential chain, and cloud
   workload identities—no long-lived cloud credential file required.
 - Atomic vault writes with restrictive local permissions.
-- HTTPS enforcement for non-local iamly.io control planes.
-- Locally generated Ed25519 Beacon identity; only the public key is enrolled with iamly.io.
+- HTTPS enforcement for the IAMly control plane.
+- Locally generated Ed25519 Beacon identity; only the public key is enrolled with IAMly.
 - Single-use enrollment tokens are accepted through masked TUI input or standard input and are never persisted.
 - Signed, nonce-protected outbound review-job polling with concurrent per-app uploads.
 - Bounded transient retries for vendor APIs and idempotent result uploads; expired jobs resume with only their missing applications.
 - Strict vendor-response size and pagination limits; redirects are refused so local authorization headers cannot cross request boundaries.
-- Sixteen local, read-only account collectors spanning HR, identity, cloud,
+- Eighteen local, read-only account collectors spanning HR, identity, cloud,
   developer, collaboration, network, and AI platforms.
 - GitHub deploy-key inventory across accessible organization repositories; only non-secret metadata is uploaded, never key material.
 - GitHub current-month net billing usage, normalized as USD spend when the organization billing API is available.
@@ -195,13 +184,13 @@ version from `VERSION`; `make build` stamps that value into `beacon version`.
 
 ## Review workflow
 
-1. A workspace requests a review in iamly.io.
+1. A workspace requests a review in IAMly.
 2. Beacon claims the job through signed outbound HTTPS; no inbound port is required.
 3. Configured collectors run independently and concurrently inside the customer environment.
 4. Each collector completes its application-specific profile, role, activity, credential, and billing enrichment locally.
 5. Beacon uploads each normalized application snapshot as soon as it is ready; one failed connector does not block the others.
 6. A temporary network interruption is retried in place. If the job lease expires, Beacon reclaims it and reruns only applications whose snapshots were not accepted.
-7. iamly.io waits for every requested connector to reach a terminal state, builds the unified access matrix, applies policy analysis, and retains findings and audit evidence.
+7. IAMly waits for every requested connector to reach a terminal state, builds the unified access matrix, applies policy analysis, and retains findings and audit evidence.
 
 ## Supported collectors
 
@@ -258,7 +247,7 @@ journalctl --user -u beacon.service -n 20 --no-pager
 ```
 
 The startup log reports the number of integrations available. Confirm that
-count and the integration status in iamly.io before starting a review. A review
+count and the integration status in IAMly before starting a review. A review
 keeps the application scope it had when queued; restarting Beacon cannot add a
 new integration retroactively to an in-progress review.
 
@@ -380,8 +369,8 @@ zoom.clientSecret
 Grant the granular read-only `user:read:list_users:admin` scope (or the classic
 `user:read:admin` equivalent). Beacon exchanges the three local values for a
 short-lived Zoom access token, inventories active, inactive, and pending users,
-enriches role and last-login information, and sends only normalized account
-observations to iamly.io.
+enriches role and last-login information, and sends the normalized account data
+to IAMly.
 
 ## Develop
 
@@ -402,9 +391,9 @@ Set `BEACON_HOME` to choose a local runtime directory. Otherwise Beacon uses the
 
 ```text
 beacon                 Open the interactive terminal interface
-beacon configure [--local | --google-kms | --aws-kms] [--dev]
-                       Configure interactively; production is the default control plane
-beacon configure [STORAGE] [--dev] --name NAME [--kms-key KEY] --enrollment-token-stdin
+beacon configure [--local | --google-kms | --aws-kms]
+                       Configure interactively against the IAMly beta control plane
+beacon configure [STORAGE] --name NAME [--kms-key KEY] --enrollment-token-stdin
                        Configure noninteractively; cloud providers require --kms-key
 beacon secret set [integration]
                        Guided setup for any supported collector;

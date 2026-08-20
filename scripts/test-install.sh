@@ -58,11 +58,14 @@ PATH="$test_root/mock-bin:$PATH" INSTALLER_FIXTURES="$test_root/fixtures" \
 [ -x "$test_root/bin/beacon" ]
 [ "$("$test_root/bin/beacon" version)" = "Beacon $version" ]
 
-PATH="$test_root/mock-bin:$PATH" INSTALLER_FIXTURES="$test_root/fixtures" \
+if PATH="$test_root/mock-bin:$PATH" INSTALLER_FIXTURES="$test_root/fixtures" \
   IAMLY_BEACON_RELEASE_BASE=https://fixtures.invalid \
   "$repo_root/install.sh" --dev --install-dir "$test_root/dev-bin" \
-  >"$test_root/dev.out"
-grep -Fq 'beacon configure --local --dev' "$test_root/dev.out"
+  >"$test_root/dev.out" 2>"$test_root/dev.err"; then
+  echo "installer accepted the retired --dev route" >&2
+  exit 1
+fi
+grep -Fq 'unknown argument: --dev' "$test_root/dev.err"
 
 printf 'corrupt' >> "$test_root/fixtures/$archive"
 if PATH="$test_root/mock-bin:$PATH" INSTALLER_FIXTURES="$test_root/fixtures" \

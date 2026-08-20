@@ -220,6 +220,26 @@ func TestControlPlaneErrorsNeverEchoTheRequestBody(t *testing.T) {
 	}
 }
 
+func TestUploadRejectsOversizedResultBeforeNetwork(t *testing.T) {
+	_, privateKey, _ := ed25519.GenerateKey(rand.Reader)
+	var reached atomic.Bool
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		reached.Store(true)
+	}))
+	defer server.Close()
+	client := Client{BaseURL: server.URL, BeaconID: "bcn_abcdefghijklmnopqrstuv", PrivateKey: privateKey, HTTPClient: server.Client()}
+	oversized := strings.Repeat("x", maxResultUploadBytes)
+	err := client.Upload(context.Background(), Job{ID: "job_123", LeaseToken: "lease-123", ClaimGeneration: 1}, Result{
+		Platform: "slack", CapturedAt: time.Now().Format(time.RFC3339), Error: &oversized,
+	})
+	if err == nil || !strings.Contains(err.Error(), "32 MiB upload limit") {
+		t.Fatalf("error = %v", err)
+	}
+	if reached.Load() {
+		t.Fatal("oversized upload reached the network")
+	}
+}
+
 func TestControlPlaneErrorTextIsBoundedAndSafe(t *testing.T) {
 	tests := []struct {
 		name      string

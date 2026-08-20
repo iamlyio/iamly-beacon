@@ -96,6 +96,59 @@ func TestExecuteBeaconJobUploadsConnectorFailureWithoutStoppingSuccessfulCollect
 	}
 }
 
+func TestExecuteBeaconJobBoundsCollectorTimeAndCapturesAfterCollection(t *testing.T) {
+	original := collector.Supported
+	t.Cleanup(func() { collector.Supported = original })
+	collector.Supported = map[string]collector.Collector{
+		"google": func(ctx context.Context, _ map[string]string) ([]protocol.Member, *protocol.Spend, error) {
+			<-ctx.Done()
+			return nil, nil, ctx.Err()
+		},
+	}
+
+	resultChannel := make(chan protocol.Result, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		var result protocol.Result
+		if err := json.NewDecoder(request.Body).Decode(&result); err != nil {
+			http.Error(response, "invalid body", http.StatusBadRequest)
+			return
+		}
+		resultChannel <- result
+		response.Header().Set("Content-Type", "application/json")
+		_, _ = response.Write([]byte(`{"complete":true}`))
+	}))
+	t.Cleanup(server.Close)
+
+	identity, err := enrollment.GenerateIdentity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	client, err := protocol.New(server.URL, "bcn_cdefghijklmnopqrstuvwx", identity.PrivateKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	startedAt := time.Now().UTC()
+	application := &App{stdout: io.Discard, collectionTimeout: 10 * time.Millisecond}
+	job := protocol.Job{
+		ID: "job_timeout_test", Platforms: []string{"google"},
+		LeaseToken: "lease_timeout_test", ClaimGeneration: 1,
+	}
+	if err := application.executeBeaconJob(context.Background(), client, job, map[string]map[string]string{
+		"google": {"configured": "yes"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	result := <-resultChannel
+	if result.Error == nil || *result.Error != "collection exceeded the 10 minute deadline" {
+		t.Fatalf("result error = %v", result.Error)
+	}
+	capturedAt, err := time.Parse(time.RFC3339Nano, result.CapturedAt)
+	if err != nil || capturedAt.Before(startedAt) {
+		t.Fatalf("capturedAt = %q, startedAt = %s, error = %v", result.CapturedAt, startedAt, err)
+	}
+}
+
 func TestExecuteBeaconJobUploadsEnrichedAppBeforeOtherConnectorsFinish(t *testing.T) {
 	original := collector.Supported
 	t.Cleanup(func() { collector.Supported = original })
@@ -225,7 +278,7 @@ func (e *testEnroller) Enroll(_ context.Context, controlPlane, token, name, publ
 	if !e.kms.selfTested {
 		return enrollment.Result{}, errors.New("enrollment happened before KMS self-test")
 	}
-	if controlPlane != productionControlPlane || token != testToken() || name != "Production" || publicKey == "" || version != "v1.2.3" {
+	if controlPlane != betaControlPlane || token != testToken() || name != "Production" || publicKey == "" || version != "v1.2.3" {
 		return enrollment.Result{}, errors.New("unexpected enrollment input")
 	}
 	e.kms.enrolled = true
@@ -244,7 +297,7 @@ func TestConfigureEnrollsAfterKMSSelfTestAndPersistsIdentityWithoutToken(t *test
 		version: "v1.2.3",
 		paths:   config.Paths{Vault: path},
 		stdin:   bytes.NewBufferString(testToken() + "\n"),
-		newKMS: func(context.Context) (kmsWrapper, error) {
+		newKeyWrapper: func(context.Context, vault.Provider, string, bool) (kmsWrapper, error) {
 			return kms, nil
 		},
 		enroller: enroller,
@@ -319,7 +372,7 @@ func TestConfigureLocalCreatesUsableRestrictedVault(t *testing.T) {
 	}
 }
 
-func TestConfigureDevSelectsDevelopmentControlPlane(t *testing.T) {
+func TestConfigureSelectsBetaControlPlane(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("BEACON_HOME", home)
 	application, err := New("v1.2.3")
@@ -330,8 +383,7 @@ func TestConfigureDevSelectsDevelopmentControlPlane(t *testing.T) {
 	application.enroller = staticEnroller{}
 	if err := application.configure(context.Background(), []string{
 		"--local",
-		"--dev",
-		"--name", "Development",
+		"--name", "Beta",
 		"--enrollment-token-stdin",
 	}); err != nil {
 		t.Fatal(err)
@@ -349,8 +401,8 @@ func TestConfigureDevSelectsDevelopmentControlPlane(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if data.ControlPlane.URL != developmentControlPlane {
-		t.Fatalf("control plane = %q, want %q", data.ControlPlane.URL, developmentControlPlane)
+	if data.ControlPlane.URL != betaControlPlane {
+		t.Fatalf("control plane = %q, want %q", data.ControlPlane.URL, betaControlPlane)
 	}
 }
 
@@ -376,7 +428,7 @@ func TestConfigureWithBlankTokenRetainsExistingIdentity(t *testing.T) {
 		version: "v1.2.3",
 		paths:   config.Paths{Vault: path},
 		stdin:   bytes.NewReader(nil),
-		newKMS: func(context.Context) (kmsWrapper, error) {
+		newKeyWrapper: func(context.Context, vault.Provider, string, bool) (kmsWrapper, error) {
 			return kms, nil
 		},
 		enroller:         enroller,
@@ -396,7 +448,7 @@ func TestConfigureWithBlankTokenRetainsExistingIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if data.ControlPlane.URL != productionControlPlane || data.ControlPlane.BeaconID != existing.ControlPlane.BeaconID ||
+	if data.ControlPlane.URL != betaControlPlane || data.ControlPlane.BeaconID != existing.ControlPlane.BeaconID ||
 		data.ControlPlane.SigningPrivateKey != existing.ControlPlane.SigningPrivateKey {
 		t.Fatalf("reconfigured identity = %#v", data.ControlPlane)
 	}
@@ -408,7 +460,7 @@ func TestInvalidTokenFailsBeforeOpeningKMS(t *testing.T) {
 		version: "v1.2.3",
 		paths:   config.Paths{Vault: filepath.Join(t.TempDir(), "vault.bin")},
 		stdin:   bytes.NewBufferString("not-a-token\n"),
-		newKMS: func(context.Context) (kmsWrapper, error) {
+		newKeyWrapper: func(context.Context, vault.Provider, string, bool) (kmsWrapper, error) {
 			opened = true
 			return nil, errors.New("should not open")
 		},
@@ -452,7 +504,7 @@ func importTestApp(t *testing.T, input io.Reader, output io.Writer) (*App, strin
 		paths:  config.Paths{Vault: path},
 		stdin:  input,
 		stdout: output,
-		newKMS: func(context.Context) (kmsWrapper, error) {
+		newKeyWrapper: func(context.Context, vault.Provider, string, bool) (kmsWrapper, error) {
 			return wrapper, nil
 		},
 	}, path, wrapper
@@ -559,14 +611,13 @@ func TestConfigureStorageSelectors(t *testing.T) {
 		provider         vault.Provider
 		providerExplicit bool
 		nonInteractive   bool
-		dev              bool
 		wantError        bool
 	}{
 		{name: "new default stays interactive", arguments: nil},
 		{name: "local", arguments: []string{"--local"}, provider: vault.ProviderLocal, providerExplicit: true},
 		{name: "google", arguments: []string{"--google-kms"}, provider: vault.ProviderGoogleKMS, providerExplicit: true},
 		{name: "aws", arguments: []string{"--aws-kms"}, provider: vault.ProviderAWSKMS, providerExplicit: true},
-		{name: "development stays interactive", arguments: []string{"--dev"}, dev: true},
+		{name: "retired development selector is rejected", arguments: []string{"--dev"}, wantError: true},
 		{name: "legacy kms key infers google", arguments: []string{"--kms-key", testKeyName}, provider: vault.ProviderGoogleKMS, providerExplicit: true, nonInteractive: true},
 		{name: "conflict", arguments: []string{"--local", "--aws-kms"}, wantError: true},
 		{name: "customer URL rejected", arguments: []string{"--control-plane", "https://other.example"}, wantError: true},
@@ -583,7 +634,7 @@ func TestConfigureStorageSelectors(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if got.provider != test.provider || got.providerExplicit != test.providerExplicit || got.nonInteractive != test.nonInteractive || got.dev != test.dev {
+			if got.provider != test.provider || got.providerExplicit != test.providerExplicit || got.nonInteractive != test.nonInteractive {
 				t.Fatalf("options = %#v", got)
 			}
 		})
@@ -638,7 +689,7 @@ func TestConfigureCanRewrapExistingVaultToLocalStorage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if data.ControlPlane.URL != productionControlPlane || data.ControlPlane.SigningPrivateKey != existing.ControlPlane.SigningPrivateKey {
+	if data.ControlPlane.URL != betaControlPlane || data.ControlPlane.SigningPrivateKey != existing.ControlPlane.SigningPrivateKey {
 		t.Fatalf("migrated identity = %#v", data.ControlPlane)
 	}
 	if len(opened) != 2 || opened[0] != vault.ProviderGoogleKMS || opened[1] != vault.ProviderLocal || !localCreate {
