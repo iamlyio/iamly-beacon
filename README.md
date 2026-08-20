@@ -88,7 +88,7 @@ ARM64. Windows operators should rerun the verified installer.
 
 ## Manual download and verification
 
-[GitHub Releases](https://github.com/iamlyio/iamly-beacon/releases/tag/v2.2.0-rc.9)
+[GitHub Releases](https://github.com/iamlyio/iamly-beacon/releases/tag/v2.2.0-rc.10)
 provides ready-to-run binaries with no language runtime to install. Choose the
 archive matching the server that will keep your application credentials:
 
@@ -104,7 +104,7 @@ For a typical Intel/AMD Linux host:
 
 ```sh
 archive=iamly-beacon_linux_amd64.tar.gz
-base=https://github.com/iamlyio/iamly-beacon/releases/download/v2.2.0-rc.9
+base=https://github.com/iamlyio/iamly-beacon/releases/download/v2.2.0-rc.10
 curl --fail --location --remote-name "$base/$archive"
 curl --fail --location --remote-name "$base/SHA256SUMS"
 grep " $archive\$" SHA256SUMS > SHA256SUMS.selected
@@ -123,7 +123,7 @@ Use `darwin_arm64` on Apple silicon or `darwin_amd64` on an Intel Mac:
 
 ```sh
 archive=iamly-beacon_darwin_arm64.tar.gz
-base=https://github.com/iamlyio/iamly-beacon/releases/download/v2.2.0-rc.9
+base=https://github.com/iamlyio/iamly-beacon/releases/download/v2.2.0-rc.10
 curl --fail --location --remote-name "$base/$archive"
 curl --fail --location --remote-name "$base/SHA256SUMS"
 grep " $archive\$" SHA256SUMS > SHA256SUMS.selected
@@ -141,7 +141,7 @@ ARM:
 
 ```powershell
 $Archive = "iamly-beacon_windows_amd64.zip"
-$Base = "https://github.com/iamlyio/iamly-beacon/releases/download/v2.2.0-rc.9"
+$Base = "https://github.com/iamlyio/iamly-beacon/releases/download/v2.2.0-rc.10"
 Invoke-WebRequest "$Base/$Archive" -OutFile $Archive
 Invoke-WebRequest "$Base/SHA256SUMS" -OutFile "SHA256SUMS"
 $Expected = ((Select-String -Path "SHA256SUMS" -Pattern " $Archive$").Line -split "\s+")[0]
@@ -196,7 +196,8 @@ version from `VERSION`; `make build` stamps that value into `beacon version`.
 - Nineteen local, read-only account collectors spanning HR, identity, cloud,
   developer, collaboration, network, and AI platforms.
 - GitHub deploy-key inventory across accessible organization repositories; only non-secret metadata is uploaded, never key material.
-- GitHub current-month net billing usage, normalized as USD spend when the organization billing API is available.
+- Best-effort current-month spend from GitHub, OpenAI, Anthropic, and
+  Cloudflare when their read-only billing APIs are available.
 - Unit tests for enrollment, request signing, encryption, permissions, freshness, and tamper detection.
 
 `beacon run` is a long-running worker. Each control-plane poll writes a
@@ -229,13 +230,13 @@ port.
 | Notion | `notion.token` | Workspace people and bots visible to an internal integration |
 | Zoom | `zoom.accountId`, `zoom.clientId`, `zoom.clientSecret` | Active, inactive, and pending users, roles, license type, last login |
 | Figma | `figma.token`, `figma.tenantId` | SCIM-provisioned users, lifecycle, administrator flag, and seat type |
-| OpenAI | `openai.adminApiKey` | API Platform organization users and roles |
-| Anthropic | `anthropic.adminApiKey` | Console organization users and roles |
+| OpenAI | `openai.adminApiKey` | API Platform organization users, roles, and current-month organization cost |
+| Anthropic | `anthropic.adminApiKey` | Console organization users, roles, and current-month organization cost |
 | Linear | `linear.apiKey` | Active and disabled workspace users, roles, and activity |
 | Vercel | `vercel.token`, `vercel.teamId` | Team members, roles, and pending email invitations |
 | Asana | `asana.token`, `asana.workspaceGid` | Users visible in one workspace or organization |
 | Canva | `canva.token` | SCIM-managed team users and lifecycle status |
-| Cloudflare | `cloudflare.accountId`, `cloudflare.token` | Account members, invitation status, roles, and permission groups |
+| Cloudflare | `cloudflare.accountId`, `cloudflare.token` | Account members, invitation status, roles, permission groups, and account subscription prices |
 | npm | `npmjs.token`, `npmjs.org` | Organization members and roles |
 | Docker Hub | `dockerhub.identifier`, `dockerhub.secret`, `dockerhub.org` | Organization members, roles, and recent activity |
 
@@ -408,6 +409,26 @@ adds the token owner's verified primary email only; it does not reveal private
 addresses for the rest of the organization.
 
 Billing collection requires GitHub's enhanced billing platform. The organization usage-summary endpoint is currently a public preview, so Beacon treats unavailable billing as optional enrichment and still uploads a valid account and deploy-key snapshot.
+
+## Spend collection
+
+Beacon collects provider-reported current-month spend only when the configured
+read-only credential can access an authoritative billing endpoint:
+
+- GitHub organization net billing usage from the enhanced billing platform.
+- OpenAI API Platform organization costs from the Admin API.
+- Anthropic Console organization costs from the Admin API. Anthropic reports
+  decimal cents; Beacon normalizes them to USD.
+- Cloudflare account-level subscription prices with `Billing Read`, normalized
+  to a monthly amount for weekly, monthly, quarterly, or annual billing.
+
+Billing enrichment is best effort. A denied or unavailable billing endpoint
+does not fail the identity review, and Beacon never estimates spend from public
+list prices. Google Workspace, Slack, and the other roster integrations remain
+visible in access reviews but do not report spend because their supported APIs
+do not expose the customer's contracted invoice total. Cloudflare zone plans
+and restricted usage-billing APIs are not included in the account-subscription
+total.
 
 ## Zoom collection
 

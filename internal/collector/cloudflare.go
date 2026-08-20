@@ -3,6 +3,7 @@ package collector
 import (
 	"context"
 	"errors"
+	"math"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -39,6 +40,63 @@ type cloudflareMember struct {
 		FirstName string `json:"first_name"`
 		LastName  string `json:"last_name"`
 	} `json:"user"`
+}
+
+func cloudflareSubscriptionSpend(ctx context.Context, token, accountID string) *protocol.Spend {
+	endpoint := cloudflareAPIBaseURL + "/accounts/" + url.PathEscape(accountID) + "/subscriptions"
+	request, _ := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	request.Header.Set("Authorization", "Bearer "+token)
+	request.Header.Set("Accept", "application/json")
+	response, err := doVendorRequest(ctx, request)
+	if err != nil || response == nil {
+		return nil
+	}
+	var payload struct {
+		Success bool `json:"success"`
+		Result  []struct {
+			Currency string  `json:"currency"`
+			Frequency string  `json:"frequency"`
+			Price     float64 `json:"price"`
+			State     string  `json:"state"`
+		} `json:"result"`
+	}
+	decodeErr := decodeVendorJSON(response.Body, 16<<20, &payload)
+	response.Body.Close()
+	if !successful(response.StatusCode) || decodeErr != nil || !payload.Success {
+		return nil
+	}
+	total := 0.0
+	currency := ""
+	for _, subscription := range payload.Result {
+		state := strings.ToLower(strings.TrimSpace(subscription.State))
+		if state == "cancelled" || state == "failed" || state == "expired" || subscription.Price == 0 {
+			continue
+		}
+		if subscription.Price < 0 || math.IsNaN(subscription.Price) || math.IsInf(subscription.Price, 0) {
+			return nil
+		}
+		candidate := strings.ToUpper(strings.TrimSpace(subscription.Currency))
+		if len(candidate) != 3 || (currency != "" && currency != candidate) {
+			return nil
+		}
+		currency = candidate
+		switch strings.ToLower(strings.TrimSpace(subscription.Frequency)) {
+		case "weekly":
+			total += subscription.Price * 52 / 12
+		case "monthly", "":
+			total += subscription.Price
+		case "quarterly":
+			total += subscription.Price / 3
+		case "yearly":
+			total += subscription.Price / 12
+		default:
+			return nil
+		}
+	}
+	if currency == "" {
+		return nil
+	}
+	return &protocol.Spend{Amount: math.Round(total*10000) / 10000, Currency: currency}
 }
 
 func cloudflareMemberStatus(status string) string {
@@ -190,5 +248,5 @@ func Cloudflare(ctx context.Context, credentials map[string]string) ([]protocol.
 	if !complete {
 		return nil, nil, errPaginationLimit
 	}
-	return members, nil, nil
+	return members, cloudflareSubscriptionSpend(ctx, credentials["token"], credentials["accountId"]), nil
 }

@@ -11,19 +11,32 @@ import (
 
 func TestOpenAICollectsPaginatedOrganizationUsers(t *testing.T) {
 	requests := 0
+	userRequests := 0
 	useVendorTestServer(t, http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		requests++
-		if request.Method != http.MethodGet || request.Host != "api.openai.com" || request.URL.Path != "/v1/organization/users" {
+		if request.Method != http.MethodGet || request.Host != "api.openai.com" {
 			t.Fatalf("unexpected OpenAI request %s %s%s", request.Method, request.Host, request.URL.Path)
 		}
 		if request.Header.Get("Authorization") != "Bearer admin-secret" || request.Header.Get("Accept") != "application/json" {
 			t.Fatal("OpenAI authentication headers are invalid")
 		}
+		if request.URL.Path == "/v1/organization/costs" {
+			if request.URL.Query().Get("bucket_width") != "1d" || request.URL.Query().Get("limit") != "31" ||
+				request.URL.Query().Get("start_time") == "" || request.URL.Query().Get("end_time") == "" {
+				t.Fatalf("invalid OpenAI cost query %s", request.URL.RawQuery)
+			}
+			_, _ = response.Write([]byte(`{"data":[{"results":[{"amount":{"value":1.23456,"currency":"usd"}}]}],"has_more":false}`))
+			return
+		}
+		if request.URL.Path != "/v1/organization/users" {
+			t.Fatalf("unexpected OpenAI path %s", request.URL.Path)
+		}
+		userRequests++
 		if request.URL.Query().Get("limit") != "100" {
 			t.Fatalf("limit=%q", request.URL.Query().Get("limit"))
 		}
 		response.Header().Set("Content-Type", "application/json")
-		if requests == 1 {
+		if userRequests == 1 {
 			if request.URL.Query().Get("after") != "" {
 				t.Fatal("first OpenAI page unexpectedly has a cursor")
 			}
@@ -40,7 +53,7 @@ func TestOpenAICollectsPaginatedOrganizationUsers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if spend != nil || len(members) != 2 || requests != 2 {
+	if spend == nil || spend.Amount != 1.2346 || spend.Currency != "USD" || len(members) != 2 || requests != 3 {
 		t.Fatalf("members=%#v spend=%#v requests=%d", members, spend, requests)
 	}
 	if members[0].Status != "active" || members[0].Role == nil || *members[0].Role != "owner" ||
@@ -49,6 +62,20 @@ func TestOpenAICollectsPaginatedOrganizationUsers(t *testing.T) {
 	}
 	if members[1].Role == nil || *members[1].Role != "member" || members[1].CreatedAt != nil {
 		t.Fatalf("second member=%#v", members[1])
+	}
+}
+
+func TestOpenAICostFailureDoesNotDiscardMembers(t *testing.T) {
+	useVendorTestServer(t, http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		if request.URL.Path == "/v1/organization/costs" {
+			response.WriteHeader(http.StatusForbidden)
+			return
+		}
+		_, _ = response.Write([]byte(`{"data":[{"id":"user_1"}],"has_more":false}`))
+	}))
+	members, spend, err := OpenAI(context.Background(), map[string]string{"adminApiKey": "secret"})
+	if err != nil || len(members) != 1 || spend != nil {
+		t.Fatalf("members=%#v spend=%#v err=%v", members, spend, err)
 	}
 }
 

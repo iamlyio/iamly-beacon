@@ -13,13 +13,21 @@ func TestCloudflareCollectsPaginatedAccountMembers(t *testing.T) {
 	originalBase, originalClient := cloudflareAPIBaseURL, httpClient
 	t.Cleanup(func() { cloudflareAPIBaseURL, httpClient = originalBase, originalClient })
 	requests := 0
+	memberRequests := 0
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		requests++
-		if request.Method != http.MethodGet || request.URL.Path != "/accounts/"+accountID+"/members" ||
-			request.Header.Get("Authorization") != "Bearer cf-token" || request.URL.Query().Get("per_page") != "50" {
+		if request.Method != http.MethodGet || request.Header.Get("Authorization") != "Bearer cf-token" {
 			t.Fatalf("unexpected request %s %s", request.Method, request.URL.String())
 		}
-		if requests == 1 {
+		if request.URL.Path == "/accounts/"+accountID+"/subscriptions" {
+			_, _ = response.Write([]byte(`{"success":true,"result":[{"currency":"USD","frequency":"monthly","price":20,"state":"Paid"},{"currency":"USD","frequency":"yearly","price":120,"state":"Provisioned"},{"currency":"USD","frequency":"monthly","price":50,"state":"Cancelled"}]}`))
+			return
+		}
+		if request.URL.Path != "/accounts/"+accountID+"/members" || request.URL.Query().Get("per_page") != "50" {
+			t.Fatalf("unexpected request %s %s", request.Method, request.URL.String())
+		}
+		memberRequests++
+		if memberRequests == 1 {
 			if request.URL.Query().Get("page") != "1" {
 				t.Fatalf("page=%q", request.URL.Query().Get("page"))
 			}
@@ -38,7 +46,7 @@ func TestCloudflareCollectsPaginatedAccountMembers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if spend != nil || requests != 2 || len(members) != 3 {
+	if spend == nil || spend.Amount != 30 || spend.Currency != "USD" || requests != 3 || len(members) != 3 {
 		t.Fatalf("members=%#v spend=%#v requests=%d", members, spend, requests)
 	}
 	if members[0].Email == nil || *members[0].Email != "owner@example.com" || members[0].Name == nil ||
@@ -51,6 +59,25 @@ func TestCloudflareCollectsPaginatedAccountMembers(t *testing.T) {
 	}
 	if members[2].Status != "deactivated" || members[2].Role == nil || *members[2].Role != "member" {
 		t.Fatalf("rejected=%#v", members[2])
+	}
+}
+
+func TestCloudflareBillingFailureDoesNotDiscardMembers(t *testing.T) {
+	const accountID = "0123456789abcdef0123456789abcdef"
+	originalBase, originalClient := cloudflareAPIBaseURL, httpClient
+	t.Cleanup(func() { cloudflareAPIBaseURL, httpClient = originalBase, originalClient })
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		if strings.HasSuffix(request.URL.Path, "/subscriptions") {
+			response.WriteHeader(http.StatusForbidden)
+			return
+		}
+		_, _ = response.Write([]byte(`{"success":true,"result":[],"result_info":{"page":1,"total_count":0}}`))
+	}))
+	defer server.Close()
+	cloudflareAPIBaseURL, httpClient = server.URL, server.Client()
+	members, spend, err := Cloudflare(context.Background(), map[string]string{"token": "token", "accountId": accountID})
+	if err != nil || len(members) != 0 || spend != nil {
+		t.Fatalf("members=%#v spend=%#v err=%v", members, spend, err)
 	}
 }
 

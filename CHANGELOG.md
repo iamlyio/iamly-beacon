@@ -5,6 +5,22 @@ All notable changes to IAMly Beacon are documented here. The project follows
 
 ## [Unreleased]
 
+## [2.2.0-rc.10] - 2026-08-20
+
+### Added
+
+- Best-effort current-month spend collection from OpenAI and Anthropic
+  organization cost reports and Cloudflare account subscriptions. GitHub
+  billing collection remains supported. Billing permission failures never
+  discard a valid identity snapshot.
+
+### Changed
+
+- Cloudflare setup now requests the additional read-only `Billing Read`
+  permission. Beacon normalizes recurring account subscription prices to a
+  monthly amount and never estimates missing provider costs from public list
+  prices.
+
 ## [2.2.0-rc.9] - 2026-08-20
 
 ### Changed
@@ -140,6 +156,7 @@ All notable changes to IAMly Beacon are documented here. The project follows
 - Initial Beacon collector, encrypted GCP KMS-backed vault, enrollment flow,
   signed control-plane protocol, and core SaaS collectors.
 
+[2.2.0-rc.10]: https://github.com/iamlyio/iamly-beacon/releases/tag/v2.2.0-rc.10
 [2.2.0-rc.9]: https://github.com/iamlyio/iamly-beacon/releases/tag/v2.2.0-rc.9
 [2.2.0-rc.8]: https://github.com/iamlyio/iamly-beacon/releases/tag/v2.2.0-rc.8
 [2.2.0-rc.7]: https://github.com/iamlyio/iamly-beacon/releases/tag/v2.2.0-rc.7
