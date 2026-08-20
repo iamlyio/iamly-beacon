@@ -1,8 +1,6 @@
 # Public release checklist
 
-This checklist separates repository preparation from the irreversible public
-launch. Complete every blocking item before changing repository visibility or
-pushing a release tag.
+Use this checklist for each public prerelease and stable release.
 
 ## Product and legal
 
@@ -10,12 +8,12 @@ pushing a release tag.
 - [x] Replace the public branch and tag history with the reviewed release tree
   in one root commit.
 - [ ] Confirm the supported-version policy and community moderation channel.
-- [ ] Confirm the beta prerelease is `v2.2.0-rc.4` and approve its
+- [x] Confirm the current beta prerelease is `v2.2.0-rc.6` and approve its
   changelog.
 
 ## Production readiness
 
-- [ ] Route `https://beacon.iamly.io/api/v1/beacon/*` to the IAMly control
+- [x] Route `https://beacon.iamly.io/api/v1/beacon/*` to the IAMly control
   plane and verify TLS, proxy trust, rate limits, and request-size limits before
   publishing a beta release.
 - [ ] Complete a new enrollment using the packaged binary and a single-use
@@ -40,7 +38,7 @@ pushing a release tag.
 
 - [ ] Set the description, homepage, and topics (`iam`, `identity`, `security`,
   `access-review`, `go`).
-- [ ] Make the repository public only after the production checks pass.
+- [x] Confirm the repository is public only after the production checks pass.
 - [ ] Enable private vulnerability reporting, secret scanning, push protection,
   Dependabot security updates, and CodeQL default setup.
 - [ ] Configure `main` rules to require a pull request, the `Verify` status
