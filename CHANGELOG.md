@@ -3,7 +3,7 @@
 All notable changes to IAMly Beacon are documented here. The project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.2.0-rc.6] - 2026-08-20
 
 ### Changed
 
