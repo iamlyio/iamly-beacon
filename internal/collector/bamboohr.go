@@ -137,7 +137,7 @@ func BambooHR(ctx context.Context, credentials map[string]string) ([]protocol.Me
 				Name:        stringPointer(name),
 				Status:      bambooHRMemberStatus(employee.Status),
 				Role:        stringPointer(bambooHRRole(employee)),
-				CreatedAt:   stringPointer(strings.TrimSpace(employee.HireDate)),
+				CreatedAt:   normalizedDatePointer(strings.TrimSpace(employee.HireDate)),
 				LastLoginAt: nil,
 			})
 		}

@@ -48,11 +48,29 @@ func TestBambooHRCollectsCompleteEmployeeLifecycle(t *testing.T) {
 		t.Fatalf("members=%#v spend=%#v requests=%d", members, spend, requests)
 	}
 	if members[0].Status != "active" || members[0].Role == nil || *members[0].Role != "Engineer · R&D" ||
-		members[0].CreatedAt == nil || *members[0].CreatedAt != "2024-01-02" {
+		members[0].CreatedAt == nil || *members[0].CreatedAt != "2024-01-02T00:00:00Z" {
 		t.Fatalf("active employee=%#v", members[0])
 	}
 	if members[1].Status != "deactivated" || members[1].Name == nil || *members[1].Name != "Grace Hopper" {
 		t.Fatalf("inactive employee=%#v", members[1])
+	}
+}
+
+func TestBambooHROmitsMalformedHireDate(t *testing.T) {
+	original := httpClient
+	t.Cleanup(func() { httpClient = original })
+	httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		return jsonResponse(http.StatusOK, `{"data":[{"employeeId":"101","status":"active","hireDate":"0000-00-00"}],"meta":{"page":{}}}`), nil
+	})}
+
+	members, _, err := BambooHR(context.Background(), map[string]string{
+		"companyDomain": "acme", "apiKey": testBambooHRAPIKey,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(members) != 1 || members[0].CreatedAt != nil {
+		t.Fatalf("members=%#v", members)
 	}
 }
 

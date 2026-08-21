@@ -5,6 +5,14 @@ All notable changes to IAMly Beacon are documented here. The project follows
 
 ## [Unreleased]
 
+## [2.2.0-rc.11] - 2026-08-21
+
+### Fixed
+
+- Normalize BambooHR date-only hire dates to UTC timestamps before upload, and
+  omit malformed hire dates so one invalid vendor value cannot reject a full
+  employee snapshot.
+
 ## [2.2.0-rc.10] - 2026-08-20
 
 ### Added
@@ -156,6 +164,7 @@ All notable changes to IAMly Beacon are documented here. The project follows
 - Initial Beacon collector, encrypted GCP KMS-backed vault, enrollment flow,
   signed control-plane protocol, and core SaaS collectors.
 
+[2.2.0-rc.11]: https://github.com/iamlyio/iamly-beacon/releases/tag/v2.2.0-rc.11
 [2.2.0-rc.10]: https://github.com/iamlyio/iamly-beacon/releases/tag/v2.2.0-rc.10
 [2.2.0-rc.9]: https://github.com/iamlyio/iamly-beacon/releases/tag/v2.2.0-rc.9
 [2.2.0-rc.8]: https://github.com/iamlyio/iamly-beacon/releases/tag/v2.2.0-rc.8

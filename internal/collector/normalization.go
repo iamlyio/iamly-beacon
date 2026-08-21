@@ -31,3 +31,11 @@ func normalizedRFC3339Pointer(value string) *string {
 	}
 	return stringPointer(parsed.UTC().Format(time.RFC3339Nano))
 }
+
+func normalizedDatePointer(value string) *string {
+	parsed, err := time.Parse("2006-01-02", value)
+	if err != nil {
+		return nil
+	}
+	return stringPointer(parsed.UTC().Format(time.RFC3339))
+}
