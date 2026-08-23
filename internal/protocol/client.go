@@ -57,11 +57,12 @@ var (
 )
 
 type Client struct {
-	BaseURL    string
-	BeaconID   string
-	PrivateKey ed25519.PrivateKey
-	Version    string
-	HTTPClient *http.Client
+	BaseURL       string
+	BeaconID      string
+	PrivateKey    ed25519.PrivateKey
+	Version       string
+	HTTPClient    *http.Client
+	pinnedBaseURL string
 }
 
 type Job struct {
@@ -124,23 +125,41 @@ type Result struct {
 }
 
 func New(baseURL, beaconID, privateKeyText string) (Client, error) {
-	privateKey, err := base64.RawURLEncoding.DecodeString(privateKeyText)
-	if err != nil || len(privateKey) != ed25519.PrivateKeySize {
-		return Client{}, errors.New("Beacon signing private key is invalid")
-	}
-	parsed, err := url.ParseRequestURI(baseURL)
-	if err != nil || parsed.Scheme == "" || parsed.Host == "" || parsed.User != nil ||
-		parsed.RawQuery != "" || parsed.Fragment != "" || (parsed.Path != "" && parsed.Path != "/") {
-		return Client{}, errors.New("Beacon control-plane URL must be an origin")
-	}
-	localHTTP := parsed.Scheme == "http" && (parsed.Hostname() == "localhost" || parsed.Hostname() == "127.0.0.1")
-	if parsed.Scheme != "https" && !localHTTP {
-		return Client{}, errors.New("Beacon control-plane URL must use HTTPS")
+	normalizedBaseURL, err := validateBaseURL(baseURL)
+	if err != nil {
+		return Client{}, err
 	}
 	if !beaconIDPattern.MatchString(beaconID) {
 		return Client{}, errors.New("Beacon ID is invalid")
 	}
-	return Client{BaseURL: strings.TrimRight(baseURL, "/"), BeaconID: beaconID, PrivateKey: ed25519.PrivateKey(privateKey)}, nil
+	privateKey, err := base64.RawURLEncoding.DecodeString(privateKeyText)
+	if err != nil || len(privateKey) != ed25519.PrivateKeySize {
+		return Client{}, errors.New("Beacon signing private key is invalid")
+	}
+	return Client{
+		BaseURL: normalizedBaseURL, pinnedBaseURL: normalizedBaseURL,
+		BeaconID: beaconID, PrivateKey: ed25519.PrivateKey(privateKey),
+	}, nil
+}
+
+func (c *Client) Destroy() {
+	for index := range c.PrivateKey {
+		c.PrivateKey[index] = 0
+	}
+	c.PrivateKey = nil
+}
+
+func validateBaseURL(baseURL string) (string, error) {
+	parsed, err := url.ParseRequestURI(baseURL)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" || parsed.User != nil ||
+		parsed.RawQuery != "" || parsed.Fragment != "" || (parsed.Path != "" && parsed.Path != "/") {
+		return "", errors.New("Beacon control-plane URL must be an origin")
+	}
+	localHTTP := parsed.Scheme == "http" && (parsed.Hostname() == "localhost" || parsed.Hostname() == "127.0.0.1")
+	if parsed.Scheme != "https" && !localHTTP {
+		return "", errors.New("Beacon control-plane URL must use HTTPS")
+	}
+	return strings.TrimRight(baseURL, "/"), nil
 }
 
 func (c Client) Poll(ctx context.Context, integrations []string) (*Job, error) {
@@ -359,6 +378,10 @@ func (c Client) Upload(ctx context.Context, job Job, result Result) error {
 }
 
 func (c Client) request(ctx context.Context, path string, body []byte) ([]byte, int, error) {
+	baseURL, err := validateBaseURL(c.BaseURL)
+	if err != nil || baseURL != c.BaseURL || (c.pinnedBaseURL != "" && baseURL != c.pinnedBaseURL) {
+		return nil, 0, errors.New("Beacon control-plane URL failed runtime validation")
+	}
 	timestamp := fmt.Sprintf("%d", time.Now().Unix())
 	nonceBytes := make([]byte, 16)
 	if _, err := io.ReadFull(rand.Reader, nonceBytes); err != nil {
@@ -371,7 +394,7 @@ func (c Client) request(ctx context.Context, path string, body []byte) ([]byte, 
 		nonce, base64.RawURLEncoding.EncodeToString(hash[:]),
 	}, "\n")
 	signature := ed25519.Sign(c.PrivateKey, []byte(message))
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, c.BaseURL+path, bytes.NewReader(body))
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+path, bytes.NewReader(body))
 	if err != nil {
 		return nil, 0, errors.New("create control-plane request")
 	}

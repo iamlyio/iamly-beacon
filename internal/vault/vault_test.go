@@ -34,10 +34,10 @@ func TestVaultRoundTripAndPermissions(t *testing.T) {
 			URL:               "https://app.iamly.example",
 			BeaconID:          "beacon_01",
 			BeaconName:        "Production",
-			SigningPrivateKey: "private-signing-key",
+			SigningPrivateKey: NewSecret("private-signing-key"),
 			SigningPublicKey:  "public-signing-key",
 		},
-		Integrations: map[string]map[string]string{"github": {"token": "github-secret"}},
+		Integrations: Integrations{"github": {"token": NewSecret("github-secret")}},
 	}
 	if err := store.Save(context.Background(), want); err != nil {
 		t.Fatalf("Save() error = %v", err)
@@ -62,11 +62,35 @@ func TestVaultRoundTripAndPermissions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
-	if got.ControlPlane.SigningPrivateKey != want.ControlPlane.SigningPrivateKey {
+	if !bytes.Equal(got.ControlPlane.SigningPrivateKey, want.ControlPlane.SigningPrivateKey) {
 		t.Fatal("signing private key did not round trip")
 	}
-	if got.Integrations["github"]["token"] != "github-secret" {
+	if got.Integrations["github"]["token"].String() != "github-secret" {
 		t.Fatal("integration secret did not round trip")
+	}
+	privateKey := got.ControlPlane.SigningPrivateKey
+	token := got.Integrations["github"]["token"]
+	got.Destroy()
+	if !bytes.Equal(privateKey, make([]byte, len(privateKey))) || !bytes.Equal(token, make([]byte, len(token))) {
+		t.Fatal("Destroy did not erase decrypted secret buffers")
+	}
+}
+
+func TestSecretReplacementErasesPreviousBuffers(t *testing.T) {
+	previous := NewSecret("old-credential-that-is-longer")
+	credentials := Credentials{"token": previous}
+	credentials.Set("token", NewSecret("new"))
+	if !bytes.Equal(previous, make([]byte, len(previous))) || credentials["token"].String() != "new" {
+		t.Fatal("Credentials.Set did not erase the replaced secret")
+	}
+
+	previous = NewSecret("old-json-secret-that-is-longer")
+	secret := previous
+	if err := json.Unmarshal([]byte(`"new"`), &secret); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(previous, make([]byte, len(previous))) || secret.String() != "new" || &secret[0] == &previous[0] {
+		t.Fatal("Secret.UnmarshalJSON retained the replaced secret buffer")
 	}
 }
 

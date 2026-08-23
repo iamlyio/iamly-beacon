@@ -61,6 +61,13 @@ jobs:
           make release-snapshot
           make verify-release
 
+      - name: Sign release checksums
+        env:
+          BEACON_RELEASE_SIGNING_KEYS: ${{ secrets.BEACON_RELEASE_SIGNING_KEYS }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          go run ./cmd/sign-release "$RELEASE_TAG" dist/SHA256SUMS dist/SHA256SUMS.sig
+
       - name: Scan release artifacts for secrets
         run: |
           go run github.com/zricethezav/gitleaks/v8@v8.30.1 dir dist \

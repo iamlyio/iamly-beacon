@@ -5,7 +5,9 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"crypto/ed25519"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -21,6 +23,8 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/iamlyio/iamly-beacon/internal/releasetrust"
 )
 
 const (
@@ -33,6 +37,10 @@ const (
 
 var releaseVersionPattern = regexp.MustCompile(`^v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$`)
 var checksumPattern = regexp.MustCompile(`^[0-9a-f]{64}$`)
+
+var trustedReleaseKeys = map[string]ed25519.PublicKey{
+	"f882bde0611a0c11": mustPublicKey("vOgAPWhbJh6l86kTG633MiVu6TTgYNcYlYPoSkPIroY="),
+}
 
 type Client struct {
 	HTTPClient     *http.Client
@@ -79,6 +87,9 @@ func (client Client) Run(ctx context.Context, currentVersion string, arguments [
 		fmt.Fprintf(output, "Beacon is already up to date (%s).\n", currentVersion)
 		return nil
 	}
+	if compareVersions(target, currentVersion) <= 0 {
+		return fmt.Errorf("upgrade target %s must be newer than current version %s", target, currentVersion)
+	}
 	return client.install(ctx, currentVersion, target, output)
 }
 
@@ -102,14 +113,16 @@ func (client Client) latestVersion(ctx context.Context) (string, error) {
 		return "", errors.New("check for Beacon updates: release metadata is too large")
 	}
 	var releases []struct {
-		TagName string `json:"tag_name"`
-		Draft   bool   `json:"draft"`
+		TagName    string `json:"tag_name"`
+		Draft      bool   `json:"draft"`
+		Prerelease bool   `json:"prerelease"`
 	}
 	if err := json.Unmarshal(metadata, &releases); err != nil {
 		return "", errors.New("check for Beacon updates: invalid release metadata")
 	}
 	for _, release := range releases {
-		if !release.Draft && releaseVersionPattern.MatchString(release.TagName) {
+		if !release.Draft && !release.Prerelease && !strings.Contains(release.TagName, "-") &&
+			releaseVersionPattern.MatchString(release.TagName) {
 			return release.TagName, nil
 		}
 	}
@@ -143,6 +156,13 @@ func (client Client) install(ctx context.Context, currentVersion, targetVersion 
 	checksums, err := client.download(ctx, client.releaseURL(targetVersion, "SHA256SUMS"), maxMetadataBytes)
 	if err != nil {
 		return err
+	}
+	signatures, err := client.download(ctx, client.releaseURL(targetVersion, "SHA256SUMS.sig"), maxMetadataBytes)
+	if err != nil {
+		return err
+	}
+	if err := releasetrust.Verify(targetVersion, checksums, signatures, trustedReleaseKeys); err != nil {
+		return fmt.Errorf("verify Beacon release authenticity: %w", err)
 	}
 	expectedChecksum, err := expectedChecksum(checksums, artifact)
 	if err != nil {
@@ -181,6 +201,97 @@ func (client Client) install(ctx context.Context, currentVersion, targetVersion 
 	}
 	fmt.Fprintf(output, "Upgraded Beacon from %s to %s.\nPrevious binary: %s\nRestart any running Beacon service to use the new version.\n", currentVersion, targetVersion, backupPath)
 	return nil
+}
+
+func mustPublicKey(encoded string) ed25519.PublicKey {
+	key, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil || len(key) != ed25519.PublicKeySize {
+		panic("invalid embedded Beacon release public key")
+	}
+	return ed25519.PublicKey(key)
+}
+
+func compareVersions(left, right string) int {
+	leftCore, leftPre := versionParts(left)
+	rightCore, rightPre := versionParts(right)
+	for index := range leftCore {
+		if leftCore[index] < rightCore[index] {
+			return -1
+		}
+		if leftCore[index] > rightCore[index] {
+			return 1
+		}
+	}
+	if leftPre == "" && rightPre != "" {
+		return 1
+	}
+	if leftPre != "" && rightPre == "" {
+		return -1
+	}
+	leftIdentifiers := strings.Split(leftPre, ".")
+	rightIdentifiers := strings.Split(rightPre, ".")
+	for index := 0; index < len(leftIdentifiers) && index < len(rightIdentifiers); index++ {
+		comparison := comparePrereleaseIdentifier(leftIdentifiers[index], rightIdentifiers[index])
+		if comparison != 0 {
+			return comparison
+		}
+	}
+	if len(leftIdentifiers) < len(rightIdentifiers) {
+		return -1
+	}
+	if len(leftIdentifiers) > len(rightIdentifiers) {
+		return 1
+	}
+	return 0
+}
+
+func versionParts(version string) ([3]uint64, string) {
+	version = strings.TrimPrefix(version, "v")
+	parts := strings.SplitN(version, "-", 2)
+	coreText := strings.Split(parts[0], ".")
+	var core [3]uint64
+	for index, value := range coreText {
+		_, _ = fmt.Sscanf(value, "%d", &core[index])
+	}
+	if len(parts) == 2 {
+		return core, parts[1]
+	}
+	return core, ""
+}
+
+func comparePrereleaseIdentifier(left, right string) int {
+	if left == right {
+		return 0
+	}
+	var leftNumber, rightNumber uint64
+	leftNumeric := scanUint(left, &leftNumber)
+	rightNumeric := scanUint(right, &rightNumber)
+	if leftNumeric && rightNumeric {
+		if leftNumber < rightNumber {
+			return -1
+		}
+		return 1
+	}
+	if leftNumeric {
+		return -1
+	}
+	if rightNumeric {
+		return 1
+	}
+	return strings.Compare(left, right)
+}
+
+func scanUint(value string, output *uint64) bool {
+	if value == "" {
+		return false
+	}
+	for _, character := range value {
+		if character < '0' || character > '9' {
+			return false
+		}
+	}
+	_, err := fmt.Sscanf(value, "%d", output)
+	return err == nil
 }
 
 func (client Client) httpClient() *http.Client {

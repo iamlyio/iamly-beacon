@@ -236,6 +236,17 @@ func TestExecuteBeaconJobUploadsEnrichedAppBeforeOtherConnectorsFinish(t *testin
 
 func stringPointer(value string) *string { return &value }
 
+func TestRuntimeRejectsNonCanonicalStoredControlPlane(t *testing.T) {
+	if err := validateRuntimeControlPlane(canonicalControlPlane); err != nil {
+		t.Fatal(err)
+	}
+	for _, value := range []string{"https://attacker.example", canonicalControlPlane + "/proxy", "http://localhost:3000"} {
+		if err := validateRuntimeControlPlane(value); err == nil {
+			t.Fatalf("runtime accepted stored control plane %q", value)
+		}
+	}
+}
+
 type testKMS struct {
 	selfTested bool
 	enrolled   bool
@@ -321,7 +332,7 @@ func TestConfigureEnrollsAfterKMSSelfTestAndPersistsIdentityWithoutToken(t *test
 		t.Fatal(err)
 	}
 	if data.ControlPlane.BeaconID != "bcn_abcdefghijklmnopqrstuv" || data.ControlPlane.BeaconName != "Production" ||
-		data.ControlPlane.SigningPrivateKey != identity.PrivateKey || data.ControlPlane.SigningPublicKey != identity.PublicKey {
+		data.ControlPlane.SigningPrivateKey.String() != identity.PrivateKey || data.ControlPlane.SigningPublicKey != identity.PublicKey {
 		t.Fatalf("stored identity = %#v", data.ControlPlane)
 	}
 }
@@ -358,7 +369,7 @@ func TestConfigureLocalCreatesUsableRestrictedVault(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if data.ControlPlane.BeaconID == "" || data.ControlPlane.SigningPrivateKey == "" {
+	if data.ControlPlane.BeaconID == "" || len(data.ControlPlane.SigningPrivateKey) == 0 {
 		t.Fatalf("local vault identity = %#v", data.ControlPlane)
 	}
 	for _, path := range []string{application.paths.Vault, application.paths.LocalKey} {
@@ -417,7 +428,7 @@ func TestConfigureWithBlankTokenRetainsExistingIdentity(t *testing.T) {
 		URL:               "https://old.example",
 		BeaconID:          "bcn_bcdefghijklmnopqrstuvw",
 		BeaconName:        "Production",
-		SigningPrivateKey: identity.PrivateKey,
+		SigningPrivateKey: vault.NewSecret(identity.PrivateKey),
 		SigningPublicKey:  identity.PublicKey,
 	}}
 	if err := vault.NewStore(path, vault.ProviderGoogleKMS, testKeyName, kms).Save(context.Background(), existing); err != nil {
@@ -449,7 +460,7 @@ func TestConfigureWithBlankTokenRetainsExistingIdentity(t *testing.T) {
 		t.Fatal(err)
 	}
 	if data.ControlPlane.URL != canonicalControlPlane || data.ControlPlane.BeaconID != existing.ControlPlane.BeaconID ||
-		data.ControlPlane.SigningPrivateKey != existing.ControlPlane.SigningPrivateKey {
+		!bytes.Equal(data.ControlPlane.SigningPrivateKey, existing.ControlPlane.SigningPrivateKey) {
 		t.Fatalf("reconfigured identity = %#v", data.ControlPlane)
 	}
 }
@@ -496,7 +507,7 @@ func importTestApp(t *testing.T, input io.Reader, output io.Writer) (*App, strin
 	path := filepath.Join(t.TempDir(), "vault.bin")
 	wrapper := importKMS{}
 	initial := vault.Empty()
-	initial.Integrations["existing"] = map[string]string{"token": "keep-me"}
+	initial.Integrations["existing"] = vault.Credentials{"token": vault.NewSecret("keep-me")}
 	if err := vault.NewStore(path, vault.ProviderGoogleKMS, testKeyName, wrapper).Save(context.Background(), initial); err != nil {
 		t.Fatal(err)
 	}
@@ -516,7 +527,10 @@ func configureConnectionTestCredential(t *testing.T, application *App, path stri
 	if err != nil {
 		t.Fatal(err)
 	}
-	data.Integrations[integration] = credentials
+	data.Integrations[integration] = make(vault.Credentials, len(credentials))
+	for name, value := range credentials {
+		data.Integrations[integration][name] = vault.NewSecret(value)
+	}
 	if err := vault.NewStore(path, vault.ProviderGoogleKMS, testKeyName, wrapper).Save(context.Background(), data); err != nil {
 		t.Fatal(err)
 	}
@@ -703,9 +717,9 @@ func TestCredentialImportMergesAtomicallyWithoutRenderingValues(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if data.Integrations["existing"]["token"] != "keep-me" ||
-		data.Integrations["github"]["token"] != githubToken ||
-		data.Integrations["google"]["privateKey"] != googleKey {
+	if data.Integrations["existing"]["token"].String() != "keep-me" ||
+		data.Integrations["github"]["token"].String() != githubToken ||
+		data.Integrations["google"]["privateKey"].String() != googleKey {
 		t.Fatal("import did not merge the complete credential bundle")
 	}
 	blob, err := os.ReadFile(path)
@@ -830,7 +844,7 @@ func TestConfigureCanRewrapExistingVaultToLocalStorage(t *testing.T) {
 		URL:               "https://old.example",
 		BeaconID:          "bcn_bcdefghijklmnopqrstuvw",
 		BeaconName:        "Production",
-		SigningPrivateKey: identity.PrivateKey,
+		SigningPrivateKey: vault.NewSecret(identity.PrivateKey),
 		SigningPublicKey:  identity.PublicKey,
 	}}
 	if err := vault.NewStore(path, vault.ProviderGoogleKMS, testKeyName, wrapper).Save(context.Background(), existing); err != nil {
@@ -867,7 +881,7 @@ func TestConfigureCanRewrapExistingVaultToLocalStorage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if data.ControlPlane.URL != canonicalControlPlane || data.ControlPlane.SigningPrivateKey != existing.ControlPlane.SigningPrivateKey {
+	if data.ControlPlane.URL != canonicalControlPlane || !bytes.Equal(data.ControlPlane.SigningPrivateKey, existing.ControlPlane.SigningPrivateKey) {
 		t.Fatalf("migrated identity = %#v", data.ControlPlane)
 	}
 	if len(opened) != 2 || opened[0] != vault.ProviderGoogleKMS || opened[1] != vault.ProviderLocal || !localCreate {

@@ -79,7 +79,8 @@ beacon upgrade
 ```
 
 To install a specific release, use `beacon upgrade --version vX.Y.Z`. Beacon
-downloads the matching release archive, verifies its SHA-256 checksum and
+downloads the matching release archive, authenticates its signed checksum
+manifest with an embedded IAMly release key, verifies its SHA-256 checksum and
 embedded version, then atomically replaces the current binary. The prior
 binary remains beside it as `beacon.previous`; the encrypted vault and
 configuration are not changed. Restart any running Beacon service after the

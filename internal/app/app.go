@@ -166,6 +166,7 @@ func (a *App) testSecret(ctx context.Context, arguments []string) error {
 		return err
 	}
 	defer kms.Close()
+	defer data.Destroy()
 
 	integration := ""
 	if len(arguments) == 1 {
@@ -184,7 +185,8 @@ func (a *App) testSecret(ctx context.Context, arguments []string) error {
 	if _, supported := collector.ConnectionTesters[integration]; !supported {
 		return fmt.Errorf("integration %q does not support connection tests", integration)
 	}
-	credentials := data.Integrations[integration]
+	credentials := data.Integrations[integration].Strings()
+	defer discardCredentialStringReferences(credentials)
 	if credentials == nil {
 		return fmt.Errorf("integration %q is not configured", integration)
 	}
@@ -202,7 +204,7 @@ func (a *App) testSecret(ctx context.Context, arguments []string) error {
 	return nil
 }
 
-func configuredTestableIntegrations(credentials map[string]map[string]string) []string {
+func configuredTestableIntegrations(credentials vault.Integrations) []string {
 	integrations := make([]string, 0, len(credentials))
 	for integration := range credentials {
 		if _, supported := collector.ConnectionTesters[integration]; supported {
@@ -222,6 +224,7 @@ func (a *App) storeSecret(ctx context.Context, arguments []string) error {
 		return err
 	}
 	defer kms.Close()
+	defer data.Destroy()
 
 	integration := ""
 	values := map[string]string{}
@@ -260,13 +263,13 @@ func (a *App) storeSecret(ctx context.Context, arguments []string) error {
 		}
 	}
 	if data.Integrations == nil {
-		data.Integrations = make(map[string]map[string]string)
+		data.Integrations = make(vault.Integrations)
 	}
 	if data.Integrations[integration] == nil {
-		data.Integrations[integration] = make(map[string]string)
+		data.Integrations[integration] = make(vault.Credentials)
 	}
 	for name, value := range values {
-		data.Integrations[integration][name] = value
+		data.Integrations[integration].Set(name, vault.NewSecret(value))
 	}
 	if err := vault.NewStore(a.paths.Vault, metadata.Provider, metadata.KeyName, kms).Save(ctx, data); err != nil {
 		return err
@@ -362,14 +365,15 @@ func (a *App) importSecrets(ctx context.Context, arguments []string) error {
 		return err
 	}
 	defer kms.Close()
+	defer data.Destroy()
 	if data.Integrations == nil {
-		data.Integrations = make(map[string]map[string]string)
+		data.Integrations = make(vault.Integrations)
 	}
 	for _, secret := range payload.Secrets {
 		if data.Integrations[secret.Integration] == nil {
-			data.Integrations[secret.Integration] = make(map[string]string)
+			data.Integrations[secret.Integration] = make(vault.Credentials)
 		}
-		data.Integrations[secret.Integration][secret.Name] = secret.Value
+		data.Integrations[secret.Integration].Set(secret.Name, vault.NewSecret(secret.Value))
 	}
 	if err := vault.NewStore(a.paths.Vault, metadata.Provider, metadata.KeyName, kms).Save(ctx, data); err != nil {
 		return err
@@ -393,6 +397,7 @@ func (a *App) listSecrets(ctx context.Context) error {
 		return err
 	}
 	defer kms.Close()
+	defer data.Destroy()
 	if len(data.Integrations) == 0 {
 		fmt.Fprintln(a.output(), "No integration secrets configured.")
 		return nil
@@ -461,6 +466,7 @@ func (a *App) configure(ctx context.Context, arguments []string) error {
 		if err != nil {
 			return err
 		}
+		defer initial.Data.Destroy()
 	} else if !errors.Is(err, vault.ErrNotFound) {
 		return err
 	}
@@ -530,7 +536,7 @@ func (a *App) configure(ctx context.Context, arguments []string) error {
 		}
 		result.Data.ControlPlane.BeaconID = enrolled.BeaconID
 		result.Data.ControlPlane.BeaconName = enrolled.BeaconName
-		result.Data.ControlPlane.SigningPrivateKey = identity.PrivateKey
+		result.Data.ControlPlane.SetSigningPrivateKey(vault.NewSecret(identity.PrivateKey))
 		result.Data.ControlPlane.SigningPublicKey = identity.PublicKey
 	} else {
 		configuredURL := result.Data.ControlPlane.URL
@@ -561,6 +567,7 @@ func (a *App) status(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	defer data.Destroy()
 	fmt.Printf("Beacon status\n  Control plane: %s\n  Beacon name:   %s\n  Beacon ID:     %s\n  Vault:         encrypted · %s\n  Integrations:  %d configured\n", data.ControlPlane.URL, data.ControlPlane.BeaconName, data.ControlPlane.BeaconID, providerLabel(metadata.Provider), len(data.Integrations))
 	return nil
 }
@@ -599,14 +606,21 @@ func (a *App) run(ctx context.Context) error {
 		return err
 	}
 	defer kms.Close()
+	defer data.Destroy()
+	if err := validateRuntimeControlPlane(data.ControlPlane.URL); err != nil {
+		return err
+	}
 	client, err := protocol.New(
 		data.ControlPlane.URL,
 		data.ControlPlane.BeaconID,
-		data.ControlPlane.SigningPrivateKey,
+		data.ControlPlane.SigningPrivateKey.String(),
 	)
 	if err != nil {
 		return err
 	}
+	defer client.Destroy()
+	data.ControlPlane.SigningPrivateKey.Destroy()
+	data.ControlPlane.SigningPrivateKey = nil
 	client.Version = a.version
 	integrations := make([]string, 0, len(data.Integrations))
 	for integration := range data.Integrations {
@@ -641,15 +655,28 @@ func (a *App) run(ctx context.Context) error {
 			continue
 		}
 		if job.Kind == "integration_test" {
-			if err := a.executeIntegrationTestJob(ctx, client, *job, data.Integrations); err != nil {
+			credentials := data.Integrations.Strings()
+			err := a.executeIntegrationTestJob(ctx, client, *job, credentials)
+			discardNestedCredentialStringReferences(credentials)
+			if err != nil {
 				fmt.Fprintf(a.output(), "Integration test %s finished with a transport error: %s\n", job.ID, err)
 			}
 			continue
 		}
-		if err := a.executeBeaconJob(ctx, client, *job, data.Integrations); err != nil {
+		credentials := data.Integrations.Strings()
+		err = a.executeBeaconJob(ctx, client, *job, credentials)
+		discardNestedCredentialStringReferences(credentials)
+		if err != nil {
 			fmt.Fprintf(a.output(), "Review job %s finished with a transport error: %s\n", job.ID, err)
 		}
 	}
+}
+
+func validateRuntimeControlPlane(value string) error {
+	if value != canonicalControlPlane {
+		return errors.New("stored Beacon control plane is not the canonical IAMly service; run beacon configure to repair the vault")
+	}
+	return nil
 }
 
 func (a *App) executeIntegrationTestJob(ctx context.Context, client protocol.Client, job protocol.Job, credentials map[string]map[string]string) error {
@@ -845,9 +872,11 @@ func completeIdentity(controlPlane vault.ControlPlane) bool {
 	if !beaconIDPattern.MatchString(controlPlane.BeaconID) || invalidDisplayText(controlPlane.BeaconName, 80) {
 		return false
 	}
-	privateKey, err := base64.RawURLEncoding.DecodeString(controlPlane.SigningPrivateKey)
+	privateKeyText := controlPlane.SigningPrivateKey.String()
+	privateKey, err := base64.RawURLEncoding.DecodeString(privateKeyText)
+	defer wipe(privateKey)
 	if err != nil || len(privateKey) != ed25519.PrivateKeySize ||
-		base64.RawURLEncoding.EncodeToString(privateKey) != controlPlane.SigningPrivateKey {
+		base64.RawURLEncoding.EncodeToString(privateKey) != privateKeyText {
 		return false
 	}
 	publicKey, err := base64.RawURLEncoding.DecodeString(controlPlane.SigningPublicKey)
@@ -952,6 +981,19 @@ func nonInteractiveSetup(options configureOptions, initial tui.SetupResult, stdi
 func wipe(value []byte) {
 	for index := range value {
 		value[index] = 0
+	}
+}
+
+func discardCredentialStringReferences(values map[string]string) {
+	for name := range values {
+		delete(values, name)
+	}
+}
+
+func discardNestedCredentialStringReferences(values map[string]map[string]string) {
+	for name, credentials := range values {
+		discardCredentialStringReferences(credentials)
+		delete(values, name)
 	}
 }
 

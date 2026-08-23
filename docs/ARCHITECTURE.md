@@ -46,3 +46,19 @@ only after the new provider passes a wrap/unwrap self-test.
 ## Trust boundary
 
 Beacon uploads the account data required for a review: vendor account identifiers, status, roles, memberships, last activity, and billing observations. Integration credentials never leave Beacon and must never appear in logs or status output.
+
+## Secret memory lifecycle
+
+The encrypted vault decodes signing and integration secrets into owned mutable
+byte buffers. Commands erase those buffers when the decrypted vault leaves
+scope. The long-running worker erases its decoded signing-key text immediately
+after the protocol client copies the Ed25519 key and erases all remaining vault
+buffers on shutdown. It creates integration credential strings only for the
+duration of one review or connection-test job and drops their maps afterward.
+
+Go strings are immutable. HTTP headers, URL form values, JSON libraries, and
+vendor APIs can create temporary string copies whose exact memory lifetime is
+controlled by the Go runtime. Beacon therefore does not claim complete process
+memory erasure. The byte-owned vault model reduces the deterministic lifetime
+of decrypted secrets; host isolation, least-privilege credentials, and process
+restart remain required controls.

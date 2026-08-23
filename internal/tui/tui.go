@@ -514,7 +514,7 @@ func Setup(initial SetupResult) (SetupResult, bool, error) {
 	}
 	data := initial.Data
 	if data.Integrations == nil {
-		data.Integrations = make(map[string]map[string]string)
+		data.Integrations = make(vault.Integrations)
 	}
 	keyOffset := 0
 	keyName := vault.LocalKeyName

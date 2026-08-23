@@ -18,6 +18,12 @@ import (
 	"time"
 )
 
+type roundTripperFunc func(*http.Request) (*http.Response, error)
+
+func (function roundTripperFunc) RoundTrip(request *http.Request) (*http.Response, error) {
+	return function(request)
+}
+
 func TestNewRejectsControlPlanePathPrefixes(t *testing.T) {
 	_, privateKey, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
@@ -50,6 +56,40 @@ func TestNewRequiresHTTPSAndCanonicalBeaconIdentity(t *testing.T) {
 	}
 	if _, err := New("https://control.example", "bcn_invalid", encoded); err == nil {
 		t.Fatal("malformed Beacon ID was accepted")
+	}
+}
+
+func TestRequestRevalidatesMutatedControlPlaneURL(t *testing.T) {
+	_, privateKey, _ := ed25519.GenerateKey(rand.Reader)
+	client, err := New("https://control.example", "bcn_abcdefghijklmnopqrstuv", base64.RawURLEncoding.EncodeToString(privateKey))
+	if err != nil {
+		t.Fatal(err)
+	}
+	client.BaseURL = "https://attacker.example"
+	client.HTTPClient = &http.Client{Transport: roundTripperFunc(func(*http.Request) (*http.Response, error) {
+		t.Fatal("invalid control-plane URL reached the network")
+		return nil, nil
+	})}
+	if _, err := client.Poll(context.Background(), []string{"github"}); err == nil || !strings.Contains(err.Error(), "runtime validation") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestDestroyErasesSigningKey(t *testing.T) {
+	_, privateKey, _ := ed25519.GenerateKey(rand.Reader)
+	client, err := New("https://control.example", "bcn_abcdefghijklmnopqrstuv", base64.RawURLEncoding.EncodeToString(privateKey))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ownedKey := client.PrivateKey
+	client.Destroy()
+	if client.PrivateKey != nil {
+		t.Fatal("client retained its private key")
+	}
+	for _, value := range ownedKey {
+		if value != 0 {
+			t.Fatal("client did not erase its private key buffer")
+		}
 	}
 }
 
