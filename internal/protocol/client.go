@@ -56,6 +56,16 @@ var (
 	}
 )
 
+// SupportedJobPlatformNames returns a copy of the protocol platform allowlist.
+// Callers may mutate the returned slice without changing protocol validation.
+func SupportedJobPlatformNames() []string {
+	names := make([]string, 0, len(supportedJobPlatforms))
+	for name := range supportedJobPlatforms {
+		names = append(names, name)
+	}
+	return names
+}
+
 type Client struct {
 	BaseURL       string
 	BeaconID      string
