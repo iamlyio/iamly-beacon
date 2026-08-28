@@ -19,12 +19,14 @@ import (
 )
 
 const (
-	maxResponseBytes       = 1 << 20
-	maxResultUploadBytes   = 32 << 20
-	maxTestResultBytes     = 16 << 10
-	resultUploadAttempts   = 3
-	resultUploadRetryDelay = 250 * time.Millisecond
-	maxControlPlaneError   = 64
+	ProtocolVersion           = 1
+	IntegrationTestCapability = "integration_test_v1"
+	maxResponseBytes          = 1 << 20
+	maxResultUploadBytes      = 32 << 20
+	maxTestResultBytes        = 16 << 10
+	resultUploadAttempts      = 3
+	resultUploadRetryDelay    = 250 * time.Millisecond
+	maxControlPlaneError      = 64
 )
 
 var (
@@ -175,9 +177,9 @@ func validateBaseURL(baseURL string) (string, error) {
 func (c Client) Poll(ctx context.Context, integrations []string) (*Job, error) {
 	hostname, privateIPs := hostMetadata()
 	body, _ := json.Marshal(map[string]any{
-		"protocolVersion": 1,
+		"protocolVersion": ProtocolVersion,
 		"integrations":    integrations,
-		"capabilities":    []string{"integration_test_v1"},
+		"capabilities":    []string{IntegrationTestCapability},
 		"hostname":        hostname,
 		"privateIps":      privateIPs,
 		"version":         c.Version,
@@ -334,7 +336,7 @@ func validPlatformList(platforms []string) (map[string]struct{}, bool) {
 
 func (c Client) Heartbeat(ctx context.Context, job Job) error {
 	body, _ := json.Marshal(map[string]any{
-		"protocolVersion": 1,
+		"protocolVersion": ProtocolVersion,
 		"leaseToken":      job.LeaseToken,
 		"claimGeneration": job.ClaimGeneration,
 	})
@@ -349,7 +351,7 @@ func (c Client) Heartbeat(ctx context.Context, job Job) error {
 }
 
 func (c Client) Upload(ctx context.Context, job Job, result Result) error {
-	result.ProtocolVersion = 1
+	result.ProtocolVersion = ProtocolVersion
 	body, err := json.Marshal(struct {
 		Result
 		LeaseToken      string `json:"leaseToken"`

@@ -42,9 +42,11 @@ Use this checklist for each public prerelease and stable release.
   Dependabot security updates, and CodeQL default setup.
 - [ ] Configure `main` rules to require a pull request, the `Verify` status
   check, conversation resolution, and protection from deletion and force push.
-- [ ] Configure `v*` tag rules to restrict creation and prevent updates or
+- [x] Configure `v*` tag rules to restrict creation and prevent updates or
   deletion.
-- [ ] Enable immutable releases and keep default workflow permissions read-only.
+- [x] Require an independent reviewer through the `release` Environment and
+  limit it to `v*` tags.
+- [x] Enable immutable releases and keep default workflow permissions read-only.
 - [ ] Verify Issues are enabled and the issue forms render correctly.
 
 ## Publish

@@ -8,7 +8,7 @@ configure=true
 
 usage() {
   cat <<'EOF'
-Install iamly Beacon from a checksum-verified GitHub Release.
+Install iamly Beacon from a provenance- and checksum-verified GitHub Release.
 
 Usage: install.sh [--version TAG] [--install-dir DIRECTORY] [--no-configure]
 
@@ -53,7 +53,7 @@ if ! printf '%s\n' "$version" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-
 fi
 [ -n "$install_dir" ] || { echo "install.sh: installation directory is empty" >&2; exit 2; }
 
-for command_name in curl tar awk grep mktemp install mkdir mv rm uname; do
+for command_name in curl gh tar awk grep mktemp install mkdir mv rm uname; do
   command -v "$command_name" >/dev/null 2>&1 || {
     echo "install.sh: required command not found: $command_name" >&2
     exit 1
@@ -103,6 +103,15 @@ artifact_url="$release_base/$version/$archive"
 checksums_url="$release_base/$version/SHA256SUMS"
 download "$temporary_dir/$archive" "$artifact_url"
 download "$temporary_dir/SHA256SUMS" "$checksums_url"
+
+if ! gh attestation verify "$temporary_dir/$archive" \
+  --repo iamlyio/iamly-beacon \
+  --signer-workflow iamlyio/iamly-beacon/.github/workflows/release.yml \
+  --source-ref "refs/tags/$version" \
+  --deny-self-hosted-runners >/dev/null; then
+  echo "install.sh: release provenance verification failed for $archive" >&2
+  exit 1
+fi
 
 expected_checksum=$(awk -v artifact="$archive" '$2 == artifact { print $1 }' "$temporary_dir/SHA256SUMS")
 if ! printf '%s\n' "$expected_checksum" | grep -Eq '^[0-9a-f]{64}$'; then

@@ -19,6 +19,7 @@ jobs:
     name: Build and publish
     runs-on: ubuntu-24.04
     timeout-minutes: 60
+    environment: release
     steps:
       - name: Check out tagged source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -41,7 +42,23 @@ jobs:
           version="$(tr -d '[:space:]' < VERSION)"
           [[ "$RELEASE_TAG" == "v$version" ]]
           [[ "$(git cat-file -t "$RELEASE_TAG")" == "tag" ]]
+          commit="$(git rev-list -n 1 "$RELEASE_TAG")"
+          git fetch --no-tags origin main
+          git merge-base --is-ancestor "$commit" origin/main
           grep -Fq "## [$version]" CHANGELOG.md
+
+      - name: Require successful main CI
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          commit="$(git rev-list -n 1 "$RELEASE_TAG")"
+          verified_sha="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow ci.yml \
+            --commit "$commit" --status success --limit 1 --json headSha \
+            --jq '.[0].headSha // ""')"
+          [[ "$verified_sha" == "$commit" ]]
 
       - name: Test
         run: make check

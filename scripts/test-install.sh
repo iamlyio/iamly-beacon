@@ -52,11 +52,29 @@ cp "$INSTALLER_FIXTURES/${url##*/}" "$destination"
 EOF
 chmod 0755 "$test_root/mock-bin/curl"
 
+cat > "$test_root/mock-bin/gh" <<'EOF'
+#!/bin/sh
+set -eu
+[ "${INSTALLER_ATTESTATION_RESULT:-success}" = success ]
+[ "$1" = attestation ] && [ "$2" = verify ]
+EOF
+chmod 0755 "$test_root/mock-bin/gh"
+
 PATH="$test_root/mock-bin:$PATH" INSTALLER_FIXTURES="$test_root/fixtures" \
   IAMLY_BEACON_RELEASE_BASE=https://fixtures.invalid \
   "$repo_root/install.sh" --no-configure --install-dir "$test_root/bin"
 [ -x "$test_root/bin/beacon" ]
 [ "$("$test_root/bin/beacon" version)" = "Beacon $version" ]
+
+if PATH="$test_root/mock-bin:$PATH" INSTALLER_FIXTURES="$test_root/fixtures" \
+  INSTALLER_ATTESTATION_RESULT=fail IAMLY_BEACON_RELEASE_BASE=https://fixtures.invalid \
+  "$repo_root/install.sh" --no-configure --install-dir "$test_root/untrusted-bin" \
+  >"$test_root/untrusted.out" 2>"$test_root/untrusted.err"; then
+  echo "installer accepted an artifact without valid provenance" >&2
+  exit 1
+fi
+grep -Fq 'release provenance verification failed' "$test_root/untrusted.err"
+[ ! -e "$test_root/untrusted-bin/beacon" ]
 
 if PATH="$test_root/mock-bin:$PATH" INSTALLER_FIXTURES="$test_root/fixtures" \
   IAMLY_BEACON_RELEASE_BASE=https://fixtures.invalid \

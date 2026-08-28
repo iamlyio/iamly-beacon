@@ -1,0 +1,78 @@
+{
+  "contractVersion": "1.0.0",
+  "protocolVersion": 1,
+  "routes": {
+    "enroll": "/api/v1/beacon/enroll",
+    "poll": "/api/v1/beacon/jobs/poll",
+    "heartbeat": "/api/v1/beacon/jobs/{jobId}/heartbeat",
+    "reviewResult": "/api/v1/beacon/jobs/{jobId}/results",
+    "integrationTestResult": "/api/v1/beacon/integration-tests/{testId}/results"
+  },
+  "capabilities": [
+    "integration_test_v1"
+  ],
+  "platforms": [
+    "anthropic",
+    "asana",
+    "bamboohr",
+    "canva",
+    "cloudflare",
+    "dockerhub",
+    "figma",
+    "gcp",
+    "github",
+    "google",
+    "linear",
+    "notion",
+    "npmjs",
+    "openai",
+    "slack",
+    "tailscale",
+    "twingate",
+    "vercel",
+    "zoom"
+  ],
+  "integrationTestErrorCodes": [
+    "credentials_rejected",
+    "invalid_configuration",
+    "permission_denied",
+    "rate_limited",
+    "timed_out",
+    "unexpected_response",
+    "vendor_unavailable"
+  ],
+  "memberStatuses": [
+    "active",
+    "deactivated",
+    "pending",
+    "suspended",
+    "unknown"
+  ],
+  "deployKeyAccess": [
+    "read",
+    "write"
+  ],
+  "deployKeyCoverageStatuses": [
+    "complete",
+    "partial",
+    "unavailable"
+  ],
+  "patterns": {
+    "beaconId": "^bcn_[A-Za-z0-9_-]{22}$",
+    "jobId": "^job_[A-Za-z0-9_-]{22}$",
+    "testId": "^tst_[A-Za-z0-9_-]{22}$",
+    "leaseToken": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+  },
+  "limits": {
+    "enrollmentRequestBytes": 16384,
+    "pollRequestBytes": 65536,
+    "integrationTestResultBytes": 16384,
+    "reviewResultBytes": 33554432,
+    "clientResponseBytes": 1048576,
+    "membersPerResult": 100000,
+    "deployKeysPerResult": 100000,
+    "memberTextCharacters": 500,
+    "resultErrorCharacters": 2000,
+    "safeIntegerMaximum": 9007199254740991
+  }
+}

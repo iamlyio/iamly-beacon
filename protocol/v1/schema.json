@@ -1,0 +1,245 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://iamly.io/protocol/beacon/v1/schema.json",
+  "title": "IAMly Beacon protocol v1",
+  "oneOf": [
+    { "$ref": "#/$defs/enrollmentRequest" },
+    { "$ref": "#/$defs/enrollmentResponse" },
+    { "$ref": "#/$defs/pollRequest" },
+    { "$ref": "#/$defs/pollResponse" },
+    { "$ref": "#/$defs/heartbeatRequest" },
+    { "$ref": "#/$defs/reviewResultRequest" },
+    { "$ref": "#/$defs/integrationTestResultRequest" }
+  ],
+  "$defs": {
+    "protocolVersion": { "const": 1 },
+    "platform": {
+      "enum": [
+        "anthropic", "asana", "bamboohr", "canva", "cloudflare", "dockerhub",
+        "figma", "gcp", "github", "google", "linear", "notion", "npmjs",
+        "openai", "slack", "tailscale", "twingate", "vercel", "zoom"
+      ]
+    },
+    "beaconId": { "type": "string", "pattern": "^bcn_[A-Za-z0-9_-]{22}$" },
+    "jobId": { "type": "string", "pattern": "^job_[A-Za-z0-9_-]{22}$" },
+    "testId": { "type": "string", "pattern": "^tst_[A-Za-z0-9_-]{22}$" },
+    "leaseToken": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "positiveSafeInteger": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "nullableText": { "type": ["string", "null"], "maxLength": 500 },
+    "member": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "email", "name", "username", "status", "role", "lastLoginAt"],
+      "properties": {
+        "id": { "$ref": "#/$defs/nullableText" },
+        "email": { "$ref": "#/$defs/nullableText" },
+        "name": { "$ref": "#/$defs/nullableText" },
+        "username": { "$ref": "#/$defs/nullableText" },
+        "status": { "enum": ["active", "deactivated", "pending", "suspended", "unknown"] },
+        "role": { "$ref": "#/$defs/nullableText" },
+        "createdAt": { "oneOf": [{ "$ref": "#/$defs/timestamp" }, { "type": "null" }] },
+        "lastLoginAt": { "oneOf": [{ "$ref": "#/$defs/timestamp" }, { "type": "null" }] },
+        "billable": { "type": "boolean" }
+      }
+    },
+    "spend": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["amount", "currency"],
+      "properties": {
+        "amount": { "type": "number", "minimum": 0, "multipleOf": 0.0001 },
+        "currency": { "type": "string", "pattern": "^[A-Z]{3}$" }
+      }
+    },
+    "deployKey": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "repository", "access", "createdAt", "lastUsedAt", "addedBy"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 500 },
+        "repository": { "type": "string", "maxLength": 500 },
+        "access": { "enum": ["read", "write"] },
+        "createdAt": { "oneOf": [{ "$ref": "#/$defs/timestamp" }, { "type": "null" }] },
+        "lastUsedAt": { "oneOf": [{ "$ref": "#/$defs/timestamp" }, { "type": "null" }] },
+        "addedBy": { "$ref": "#/$defs/nullableText" }
+      }
+    },
+    "deployKeyCoverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "resourcesScanned", "resourcesTotal", "message"],
+      "properties": {
+        "status": { "enum": ["complete", "partial", "unavailable"] },
+        "resourcesScanned": { "type": "integer", "minimum": 0 },
+        "resourcesTotal": { "type": "integer", "minimum": 0 },
+        "message": { "type": ["string", "null"], "maxLength": 500 }
+      }
+    },
+    "ownership": {
+      "type": "object",
+      "required": ["leaseToken", "claimGeneration"],
+      "properties": {
+        "leaseToken": { "$ref": "#/$defs/leaseToken" },
+        "claimGeneration": { "$ref": "#/$defs/positiveSafeInteger" }
+      }
+    },
+    "enrollmentRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["token", "name", "publicKey", "version"],
+      "properties": {
+        "token": { "type": "string", "pattern": "^[A-Za-z0-9_-]{43}$" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "publicKey": { "type": "string", "pattern": "^[A-Za-z0-9_-]{43}$" },
+        "version": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$" }
+      }
+    },
+    "enrollmentResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["beacon", "protocolVersion"],
+      "properties": {
+        "protocolVersion": { "$ref": "#/$defs/protocolVersion" },
+        "beacon": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "name", "enrolledAt"],
+          "properties": {
+            "id": { "$ref": "#/$defs/beaconId" },
+            "name": { "type": "string", "minLength": 1, "maxLength": 80 },
+            "enrolledAt": { "$ref": "#/$defs/timestamp" }
+          }
+        }
+      }
+    },
+    "pollRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["protocolVersion", "integrations", "hostname", "privateIps", "version"],
+      "properties": {
+        "protocolVersion": { "$ref": "#/$defs/protocolVersion" },
+        "integrations": {
+          "type": "array", "minItems": 1, "uniqueItems": true,
+          "items": { "$ref": "#/$defs/platform" }
+        },
+        "capabilities": {
+          "type": "array", "maxItems": 32, "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]{0,63}$" }
+        },
+        "hostname": { "type": ["string", "null"] },
+        "privateIps": { "type": "array", "items": { "type": "string" } },
+        "version": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$" }
+      }
+    },
+    "reviewJob": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "reviewRunId", "platforms", "pendingPlatforms", "leaseToken", "claimGeneration", "leaseExpiresAt"],
+      "properties": {
+        "kind": { "enum": ["review"] },
+        "id": { "$ref": "#/$defs/jobId" },
+        "reviewRunId": { "$ref": "#/$defs/positiveSafeInteger" },
+        "platforms": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/platform" } },
+        "pendingPlatforms": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/platform" } },
+        "leaseToken": { "$ref": "#/$defs/leaseToken" },
+        "claimGeneration": { "$ref": "#/$defs/positiveSafeInteger" },
+        "leaseExpiresAt": { "$ref": "#/$defs/timestamp" }
+      }
+    },
+    "integrationTestJob": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "id", "platform", "leaseToken", "claimGeneration", "leaseExpiresAt"],
+      "properties": {
+        "kind": { "const": "integration_test" },
+        "id": { "$ref": "#/$defs/testId" },
+        "platform": { "$ref": "#/$defs/platform" },
+        "leaseToken": { "$ref": "#/$defs/leaseToken" },
+        "claimGeneration": { "$ref": "#/$defs/positiveSafeInteger" },
+        "leaseExpiresAt": { "$ref": "#/$defs/timestamp" }
+      }
+    },
+    "pollResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["protocolVersion", "job"],
+      "properties": {
+        "protocolVersion": { "$ref": "#/$defs/protocolVersion" },
+        "job": { "oneOf": [{ "$ref": "#/$defs/reviewJob" }, { "$ref": "#/$defs/integrationTestJob" }] }
+      }
+    },
+    "heartbeatRequest": {
+      "allOf": [
+        { "$ref": "#/$defs/ownership" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["protocolVersion", "leaseToken", "claimGeneration"],
+          "properties": {
+            "protocolVersion": { "$ref": "#/$defs/protocolVersion" },
+            "leaseToken": { "$ref": "#/$defs/leaseToken" },
+            "claimGeneration": { "$ref": "#/$defs/positiveSafeInteger" }
+          }
+        }
+      ]
+    },
+    "reviewResultRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["protocolVersion", "platform", "capturedAt", "members", "error", "leaseToken", "claimGeneration"],
+      "properties": {
+        "protocolVersion": { "$ref": "#/$defs/protocolVersion" },
+        "platform": { "$ref": "#/$defs/platform" },
+        "capturedAt": { "$ref": "#/$defs/timestamp" },
+        "members": { "type": "array", "maxItems": 100000, "items": { "$ref": "#/$defs/member" } },
+        "error": { "type": ["string", "null"], "maxLength": 2000 },
+        "observedSpend": { "$ref": "#/$defs/spend" },
+        "deployKeys": { "type": "array", "maxItems": 100000, "items": { "$ref": "#/$defs/deployKey" } },
+        "deployKeyCoverage": { "$ref": "#/$defs/deployKeyCoverage" },
+        "leaseToken": { "$ref": "#/$defs/leaseToken" },
+        "claimGeneration": { "$ref": "#/$defs/positiveSafeInteger" }
+      }
+    },
+    "integrationTestResultRequest": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["protocolVersion", "leaseToken", "claimGeneration", "ok"],
+          "properties": {
+            "protocolVersion": { "$ref": "#/$defs/protocolVersion" },
+            "leaseToken": { "$ref": "#/$defs/leaseToken" },
+            "claimGeneration": { "$ref": "#/$defs/positiveSafeInteger" },
+            "ok": { "const": true }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["protocolVersion", "leaseToken", "claimGeneration", "ok", "errorCode"],
+          "properties": {
+            "protocolVersion": { "$ref": "#/$defs/protocolVersion" },
+            "leaseToken": { "$ref": "#/$defs/leaseToken" },
+            "claimGeneration": { "$ref": "#/$defs/positiveSafeInteger" },
+            "ok": { "const": false },
+            "errorCode": {
+              "enum": [
+                "credentials_rejected", "invalid_configuration", "permission_denied",
+                "rate_limited", "timed_out", "unexpected_response", "vendor_unavailable"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  }
+}

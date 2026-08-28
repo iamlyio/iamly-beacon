@@ -20,6 +20,11 @@ First, open **Integrations → Beacon** in your IAMly workspace and create a
 single-use enrollment token. Then run the guided installer on the Linux or
 macOS server that will host Beacon:
 
+
+The installer requires the GitHub CLI (`gh`) so it can verify GitHub build
+provenance before it executes the downloaded Beacon binary. Authenticate `gh`
+for `github.com` before installation.
+
 ```sh
 curl --proto '=https' --tlsv1.2 -fsSL \
   https://raw.githubusercontent.com/iamlyio/iamly-beacon/main/install.sh | sh
@@ -108,6 +113,9 @@ archive=iamly-beacon_linux_amd64.tar.gz
 base=https://github.com/iamlyio/iamly-beacon/releases/download/v2.2.0-rc.11
 curl --fail --location --remote-name "$base/$archive"
 curl --fail --location --remote-name "$base/SHA256SUMS"
+gh attestation verify "$archive" --repo iamlyio/iamly-beacon \
+  --signer-workflow iamlyio/iamly-beacon/.github/workflows/release.yml \
+  --source-ref refs/tags/v2.2.0-rc.11 --deny-self-hosted-runners
 grep " $archive\$" SHA256SUMS > SHA256SUMS.selected
 sha256sum --check SHA256SUMS.selected
 tar -xzf "$archive"
@@ -127,6 +135,9 @@ archive=iamly-beacon_darwin_arm64.tar.gz
 base=https://github.com/iamlyio/iamly-beacon/releases/download/v2.2.0-rc.11
 curl --fail --location --remote-name "$base/$archive"
 curl --fail --location --remote-name "$base/SHA256SUMS"
+gh attestation verify "$archive" --repo iamlyio/iamly-beacon \
+  --signer-workflow iamlyio/iamly-beacon/.github/workflows/release.yml \
+  --source-ref refs/tags/v2.2.0-rc.11 --deny-self-hosted-runners
 grep " $archive\$" SHA256SUMS > SHA256SUMS.selected
 shasum -a 256 -c SHA256SUMS.selected
 tar -xzf "$archive"
@@ -145,6 +156,9 @@ $Archive = "iamly-beacon_windows_amd64.zip"
 $Base = "https://github.com/iamlyio/iamly-beacon/releases/download/v2.2.0-rc.11"
 Invoke-WebRequest "$Base/$Archive" -OutFile $Archive
 Invoke-WebRequest "$Base/SHA256SUMS" -OutFile "SHA256SUMS"
+gh attestation verify $Archive --repo iamlyio/iamly-beacon `
+  --signer-workflow iamlyio/iamly-beacon/.github/workflows/release.yml `
+  --source-ref refs/tags/v2.2.0-rc.11 --deny-self-hosted-runners
 $Expected = ((Select-String -Path "SHA256SUMS" -Pattern " $Archive$").Line -split "\s+")[0]
 $Actual = (Get-FileHash -Algorithm SHA256 $Archive).Hash.ToLowerInvariant()
 if ($Actual -ne $Expected) { throw "Beacon checksum verification failed" }
@@ -157,12 +171,10 @@ Expand-Archive -Force $Archive $InstallDir
 Add `%LOCALAPPDATA%\iamly\bin` to the user `PATH` if you want to run `beacon`
 without its full path.
 
-Release artifacts also include a CycloneDX SBOM and GitHub build provenance.
-With the GitHub CLI installed, verify provenance before installation:
-
-```sh
-gh attestation verify "$archive" --repo iamlyio/iamly-beacon
-```
+Release artifacts include a CycloneDX SBOM and GitHub build provenance. The
+installer and manual procedures verify provenance before first execution.
+Checksum verification remains required to detect transfer corruption and bind
+the selected archive to the signed release manifest.
 
 After a manual installation, run `beacon configure --local` and continue with
 the collector and worker commands in [Quick start](#quick-start). Use

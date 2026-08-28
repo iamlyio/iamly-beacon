@@ -14,6 +14,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/iamlyio/iamly-beacon/internal/protocol"
 )
 
 const maxResponseBytes = 64 << 10
@@ -131,7 +133,7 @@ func enrollOnce(ctx context.Context, httpClient *http.Client, endpoint string, b
 		}
 		return Result{}, httpResponse.StatusCode >= 500, fmt.Errorf("enrollment failed with HTTP %d", httpResponse.StatusCode)
 	}
-	if decoded.ProtocolVersion != 1 || !beaconIDPattern.MatchString(decoded.Beacon.ID) || !validResponseText(decoded.Beacon.Name, 80) {
+	if decoded.ProtocolVersion != protocol.ProtocolVersion || !beaconIDPattern.MatchString(decoded.Beacon.ID) || !validResponseText(decoded.Beacon.Name, 80) {
 		return Result{}, true, errors.New("control plane returned an invalid enrollment response")
 	}
 	return Result{BeaconID: decoded.Beacon.ID, BeaconName: decoded.Beacon.Name}, false, nil
