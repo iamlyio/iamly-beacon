@@ -10,6 +10,32 @@ contains IAMly Ed25519 release public keys and verifies `SHA256SUMS.sig` before
 it reads a checksum or executes an archive. GitHub attestations remain an
 independent operator-facing provenance check.
 
+## Protocol 2 coordinated release
+
+Protocol 2 replaces GitHub-only deploy-key payloads with canonical metadata-only
+`keys` and per-kind `keyCoverage`. There is no protocol 1 compatibility mode.
+The HTTP `/api/v1/beacon/...` paths and Beacon signing identities stay unchanged.
+
+Before publishing the API or app release, land the canonical
+`protocol/v2/manifest.json` and `schema.json` in Beacon. Set
+`protocol/BEACON_CONTRACT_REF` in both downstream repositories to that exact
+published Beacon commit, and verify their mirrors match it byte-for-byte.
+Do not reuse the old protocol 1 pin or point the pin at a moving branch.
+
+Drain active reviews and pause new scheduling for the cutover. Apply the app's
+forward Keys/AWS migrations and runtime grants first, then deploy compatible
+app/worker and Beacon API images together and upgrade customer Beacons to the
+protocol 2 signed release before resuming reviews. A mixed-version deployment
+rejects polling/results as `unsupported_protocol`; do not treat that rejection
+as an empty key inventory. Verify empty, complete, partial, and unavailable
+coverage using local fixture collectors before release, without production
+credentials. Preserve historical certified raw snapshots and signing keys.
+
+Rollback must coordinate Beacon, API, and app/worker versions. An API-only
+rollback to protocol 1 cannot receive protocol 2 results; keep scheduling paused
+until the compatible set is restored. Forward migrations are not reversed by
+an image rollback.
+
 ## Prepare
 
 1. Confirm the control-plane endpoints are reachable at

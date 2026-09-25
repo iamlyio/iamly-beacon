@@ -46,6 +46,7 @@ func TestConnectionProbesUseOneBoundedRead(t *testing.T) {
 		{name: "figma", credentials: map[string]string{"tenantId": "tenant", "token": "secret"}, path: "/scim/v2/tenant/Users", query: "count=1", method: http.MethodGet, body: `{}`},
 		{name: "github", credentials: map[string]string{"org": "acme", "token": "secret"}, path: "/user/memberships/orgs/acme", query: "", method: http.MethodGet, body: `{}`},
 		{name: "linear", credentials: map[string]string{"apiKey": "secret"}, path: "/graphql", query: "", method: http.MethodPost, body: `{"data":{"users":{}}}`},
+		{name: "miro", credentials: map[string]string{"orgId": "org", "token": "secret"}, path: "/v2/orgs/org/members", query: "limit=1", method: http.MethodGet, body: `{"data":[],"cursor":""}`},
 		{name: "notion", credentials: map[string]string{"token": "secret"}, path: "/v1/users", query: "page_size=1", method: http.MethodGet, body: `{}`},
 		{name: "npmjs", credentials: map[string]string{"token": "secret", "org": "acme"}, path: "/-/whoami", query: "", method: http.MethodGet, body: `{"username":"beacon"}`},
 		{name: "openai", credentials: map[string]string{"adminApiKey": "secret"}, path: "/v1/organization/users", query: "limit=1", method: http.MethodGet, body: `{}`},

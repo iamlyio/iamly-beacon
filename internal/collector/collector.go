@@ -21,6 +21,7 @@ type ConnectionTester func(context.Context, map[string]string) error
 var Supported = map[string]Collector{
 	"anthropic":  Anthropic,
 	"asana":      Asana,
+	"aws":        AWS,
 	"bamboohr":   BambooHR,
 	"canva":      Canva,
 	"cloudflare": Cloudflare,
@@ -30,6 +31,7 @@ var Supported = map[string]Collector{
 	"github":     GitHub,
 	"google":     Google,
 	"linear":     Linear,
+	"miro":       Miro,
 	"notion":     Notion,
 	"npmjs":      NPMJS,
 	"openai":     OpenAI,

@@ -1,2 +1,8 @@
 # Exact historical fingerprint for the synthetic `abc` PEM parser fixture.
 d22fd6118eaa473ef2808aff131052be0e0d81d6:internal/collector/google_test.go:private-key:6
+
+# Exact historical fingerprints for synthetic KMS resource IDs and a lease UUID,
+# not credentials. Current fixtures use visibly synthetic, low-entropy UUIDs.
+7b9284a1d2868d1b0f568dabf498fd070f6131ce:internal/collector/aws_test.go:generic-api-key:14
+7b9284a1d2868d1b0f568dabf498fd070f6131ce:internal/collector/aws_test.go:generic-api-key:15
+7b9284a1d2868d1b0f568dabf498fd070f6131ce:internal/protocol/client_test.go:generic-api-key:401

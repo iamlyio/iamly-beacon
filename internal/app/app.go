@@ -33,12 +33,13 @@ var credentialNamePattern = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_-]{0,63}$`)
 var beaconIDPattern = regexp.MustCompile(`^bcn_[A-Za-z0-9_-]{22}$`)
 
 const (
-	canonicalControlPlane      = "https://beacon.iamly.io"
-	maxCredentialImportBytes   = 1 << 20
-	maxCredentialImportEntries = 256
-	maxCredentialValueBytes    = 256 << 10
-	collectorTimeout           = 10 * time.Minute
-	connectionTestTimeout      = 30 * time.Second
+	canonicalControlPlane              = "https://beacon.iamly.io"
+	developmentControlPlaneEnvironment = "IAMLY_BEACON_CONTROL_PLANE_URL"
+	maxCredentialImportBytes           = 1 << 20
+	maxCredentialImportEntries         = 256
+	maxCredentialValueBytes            = 256 << 10
+	collectorTimeout                   = 10 * time.Minute
+	connectionTestTimeout              = 30 * time.Second
 )
 
 type App struct {
@@ -262,10 +263,17 @@ func (a *App) storeSecret(ctx context.Context, arguments []string) error {
 			return validationErr
 		}
 	}
+	if integration == "aws" && len(arguments) == 1 {
+		if validationErr := collector.ValidateAWSCredentials(values); validationErr != nil {
+			return validationErr
+		}
+	}
 	if data.Integrations == nil {
 		data.Integrations = make(vault.Integrations)
 	}
-	if data.Integrations[integration] == nil {
+	// Guided AWS setup replaces credentials so selecting the default provider
+	// chain cannot silently retain a previously saved static access key.
+	if data.Integrations[integration] == nil || (integration == "aws" && len(arguments) == 1) {
 		data.Integrations[integration] = make(vault.Credentials)
 	}
 	for name, value := range values {
@@ -483,7 +491,7 @@ func (a *App) configure(ctx context.Context, arguments []string) error {
 	if provider == vault.ProviderLocal {
 		initial.KeyName = vault.LocalKeyName
 	}
-	initial.Data.ControlPlane.URL = canonicalControlPlane
+	initial.Data.ControlPlane.URL = runtimeControlPlaneURL()
 
 	var result tui.SetupResult
 	if !options.nonInteractive {
@@ -498,6 +506,7 @@ func (a *App) configure(ctx context.Context, arguments []string) error {
 			return err
 		}
 	}
+	defer result.Data.Destroy()
 	if err := validateSetup(result, initial, hasVault, a.version); err != nil {
 		return err
 	}
@@ -610,8 +619,9 @@ func (a *App) run(ctx context.Context) error {
 	if err := validateRuntimeControlPlane(data.ControlPlane.URL); err != nil {
 		return err
 	}
+	controlPlaneURL := runtimeControlPlaneURL()
 	client, err := protocol.New(
-		data.ControlPlane.URL,
+		controlPlaneURL,
 		data.ControlPlane.BeaconID,
 		data.ControlPlane.SigningPrivateKey.String(),
 	)
@@ -635,6 +645,9 @@ func (a *App) run(ctx context.Context) error {
 	output := a.output()
 	heartbeatState := heartbeatLogState{}
 	fmt.Fprintf(output, "%s · Beacon worker starting · %d integrations available\n", runtimeTimestamp(time.Now()), len(integrations))
+	if controlPlaneURL != canonicalControlPlane {
+		fmt.Fprintf(output, "%s · Development control plane override active · %s\n", runtimeTimestamp(time.Now()), controlPlaneURL)
+	}
 	for {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -672,8 +685,19 @@ func (a *App) run(ctx context.Context) error {
 	}
 }
 
+func runtimeControlPlaneURL() string {
+	if !allowDevelopmentControlPlane {
+		return canonicalControlPlane
+	}
+	override := strings.TrimSpace(os.Getenv(developmentControlPlaneEnvironment))
+	if override == "" {
+		return canonicalControlPlane
+	}
+	return override
+}
+
 func validateRuntimeControlPlane(value string) error {
-	if value != canonicalControlPlane {
+	if value != canonicalControlPlane && !allowDevelopmentControlPlane {
 		return errors.New("stored Beacon control plane is not the canonical IAMly service; run beacon configure to repair the vault")
 	}
 	return nil
@@ -738,9 +762,6 @@ func (a *App) executeBeaconJob(ctx context.Context, client protocol.Client, job 
 		}
 	}()
 	platforms := job.PendingPlatforms
-	if len(platforms) == 0 {
-		platforms = job.Platforms
-	}
 	fmt.Fprintf(a.output(), "Review job %s · collecting %d integrations\n", job.ID, len(platforms))
 	var wait sync.WaitGroup
 	var outputMutex sync.Mutex
@@ -775,11 +796,7 @@ func (a *App) executeBeaconJob(ctx context.Context, client protocol.Client, job 
 				} else {
 					result.Members = members
 					result.ObservedSpend = spend
-					if platform == "github" {
-						deployKeys, coverage := collector.GitHubDeployKeys(collectionCtx, localCredentials)
-						result.DeployKeys = deployKeys
-						result.DeployKeyCoverage = &coverage
-					}
+					result.Keys, result.KeyCoverage = collector.CollectKeys(collectionCtx, platform, localCredentials)
 				}
 			}
 			result.CapturedAt = time.Now().UTC().Format(time.RFC3339Nano)
@@ -822,8 +839,8 @@ func validateSetup(result, initial tui.SetupResult, hasVault bool, version strin
 	default:
 		return errors.New("choose local, Google KMS, or AWS KMS vault storage")
 	}
-	if result.Data.ControlPlane.URL != canonicalControlPlane {
-		return errors.New("Beacon control plane must be the canonical IAMly service")
+	if result.Data.ControlPlane.URL != runtimeControlPlaneURL() {
+		return errors.New("Beacon control plane does not match this build's configured service")
 	}
 	name := strings.TrimSpace(result.Data.ControlPlane.BeaconName)
 	if invalidDisplayText(name, 80) {

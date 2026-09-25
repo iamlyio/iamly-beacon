@@ -1,10 +1,13 @@
 VERSION ?= $(shell tr -d '[:space:]' < VERSION)
 LDFLAGS = -s -w -X main.version=v$(VERSION)
 
-.PHONY: build test check format-check module-check installer-test run release-snapshot verify-release
+.PHONY: build development-build test check format-check module-check installer-test run release-snapshot verify-release
 
 build:
 	go build -trimpath -ldflags "$(LDFLAGS)" -o beacon ./cmd/beacon
+
+development-build:
+	go build -tags development -trimpath -ldflags "-s -w -X main.version=v$(VERSION)-development" -o beacon-development ./cmd/beacon
 
 test:
 	go test ./...

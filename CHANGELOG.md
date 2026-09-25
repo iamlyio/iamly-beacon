@@ -5,6 +5,41 @@ All notable changes to IAMly Beacon are documented here. The project follows
 
 ## [Unreleased]
 
+### Added
+
+- Generic metadata-only Keys snapshots replace the deploy-key-only wire format.
+  GitHub approved fine-grained PATs and active/disabled deploy keys retain independent
+  coverage, bounded pagination, permission isolation, and explicit unknown
+  creation/owner fields. GCP and AWS KMS encryption-key metadata share the same
+  contract. Linear's public-API key inventory limitation is reported explicitly
+  without fabricated records or collecting any secret values.
+
+- Read-only Miro Enterprise organization-member collection, including deactivated
+  users, guest and administrator roles, license names, and normalized activity.
+  Guided `orgId`/token setup and a one-member connection probe require a Company
+  Admin token with `organizations:read`; no boards or estimated spend are collected.
+
+- An explicitly tagged `beacon-development` build can target a local Beacon API
+  through `IAMLY_BEACON_CONTROL_PLANE_URL`. Release binaries continue to ignore
+  that environment variable and enforce the canonical hosted control plane.
+
+### Fixed
+
+- Empty collection snapshots now upload an empty member array instead of JSON
+  `null`, preserving the result contract when a connector returns no accounts.
+
+- Key inventory sanitation now rejects whitespace-only identities and bounds
+  coverage messages to the protocol's 500-character limit, preventing invalid
+  metadata from rejecting otherwise usable collection results.
+- Configuration now erases newly enrolled signing-key buffers on exit, and
+  invalid vault payloads erase any partially decoded secrets before returning.
+- Review orchestration uses the protocol-validated pending integration list
+  directly, removing an unreachable fallback to already completed integrations.
+- Synthetic UUID fixtures no longer trigger credential detection. Only their
+  exact historical false-positive fingerprints are excluded from secret scans.
+- Upgrade gRPC to v1.83.1 and its required Google client dependencies to fix
+  reachable HTTP/2 memory exhaustion (GO-2026-6348).
+
 ## [2.2.0-rc.11] - 2026-08-21
 
 ### Fixed

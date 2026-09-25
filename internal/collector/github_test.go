@@ -2,6 +2,7 @@ package collector
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"strings"
@@ -39,7 +40,7 @@ func TestGitHubDeployKeysReturnsOnlyNonSecretInventory(t *testing.T) {
 		}
 	})}
 
-	credentials, coverage := GitHubDeployKeys(context.Background(), map[string]string{"token": "secret-token", "org": "acme"})
+	credentials, coverage := githubDeployKeys(context.Background(), map[string]string{"token": "secret-token", "org": "acme"})
 	if coverage.Status != "complete" || coverage.ResourcesScanned != 2 || coverage.ResourcesTotal != 2 {
 		t.Fatalf("coverage = %#v", coverage)
 	}
@@ -48,15 +49,16 @@ func TestGitHubDeployKeysReturnsOnlyNonSecretInventory(t *testing.T) {
 	}
 	got := credentials[0]
 	if got.ID != "42" || got.Name != "production deploy" ||
-		got.Repository != "acme/api" || got.Access != "write" || got.AddedBy == nil || *got.AddedBy != "octocat" {
+		got.Resource != "acme/api" || got.Access != "write" || got.CreatedBy == nil || *got.CreatedBy != "octocat" || got.Owner != nil {
 		t.Fatalf("credential = %#v", got)
 	}
-	if strings.Contains(strings.Join([]string{got.ID, got.Name, got.Repository, got.Access}, " "), "SECRET-PUBLIC-MATERIAL") {
+	encoded, _ := json.Marshal(credentials)
+	if strings.Contains(string(encoded), "SECRET-PUBLIC-MATERIAL") {
 		t.Fatal("credential inventory leaked key material")
 	}
 }
 
-func TestGitHubDeployKeysExcludesDisabledKeys(t *testing.T) {
+func TestGitHubDeployKeysRetainsDisabledKeysWithoutMarkingThemActive(t *testing.T) {
 	original := httpClient
 	t.Cleanup(func() { httpClient = original })
 	httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
@@ -65,8 +67,8 @@ func TestGitHubDeployKeysExcludesDisabledKeys(t *testing.T) {
 		}
 		return jsonResponse(http.StatusOK, `[{"id":1,"title":"disabled","read_only":true,"enabled":false},{"id":2,"title":"active","read_only":true,"enabled":true}]`), nil
 	})}
-	credentials, coverage := GitHubDeployKeys(context.Background(), map[string]string{"token": "secret-token", "org": "acme"})
-	if coverage.Status != "complete" || len(credentials) != 1 || credentials[0].Name != "active" {
+	credentials, coverage := githubDeployKeys(context.Background(), map[string]string{"token": "secret-token", "org": "acme"})
+	if coverage.Status != "complete" || len(credentials) != 2 || credentials[0].ID != "1" || credentials[0].Status != "disabled" || credentials[1].ID != "2" || credentials[1].Status != "active" {
 		t.Fatalf("credentials = %#v, coverage = %#v", credentials, coverage)
 	}
 }
@@ -88,7 +90,7 @@ func TestGitHubDeployKeysKeepsAccessibleRepositoriesWhenCoverageIsPartial(t *tes
 		}
 	})}
 
-	credentials, coverage := GitHubDeployKeys(context.Background(), map[string]string{"token": "secret-token", "org": "acme"})
+	credentials, coverage := githubDeployKeys(context.Background(), map[string]string{"token": "secret-token", "org": "acme"})
 	if len(credentials) != 1 || credentials[0].Access != "read" {
 		t.Fatalf("credentials = %#v", credentials)
 	}

@@ -144,3 +144,16 @@ func Linear(ctx context.Context, credentials map[string]string) ([]protocol.Memb
 	}
 	return members, nil, nil
 }
+
+// LinearKeys deliberately does not manufacture an inventory from the Beacon
+// credential, viewer identity, or audit-log events. Linear's public GraphQL
+// schema exposes no personal API-key inventory query. The owner-only Enterprise
+// audit log retains 90 days and exposes untyped metadata, not a documented
+// current-key model. Workspace administrators can inspect keys in Linear's UI.
+// https://linear.app/docs/api-and-webhooks
+// https://linear.app/docs/audit-log
+// https://github.com/linear/linear/blob/master/packages/sdk/src/schema.graphql
+func LinearKeys(_ context.Context, _ map[string]string) ([]protocol.KeyRecord, []protocol.KeyCoverage) {
+	return []protocol.KeyRecord{}, []protocol.KeyCoverage{keyCoverageFailure("api_key",
+		"Linear's public API does not expose personal API-key inventory. Administrators can view keys in Settings > Administration > API. The 90-day Enterprise audit log is not a current-key inventory; no key values or audit metadata were read")}
+}
