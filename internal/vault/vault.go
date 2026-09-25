@@ -133,6 +133,7 @@ func (s *Store) Load(ctx context.Context) (Data, error) {
 	defer wipe(plaintext)
 	data := Empty()
 	if err := json.Unmarshal(plaintext, &data); err != nil {
+		data.Destroy()
 		return Data{}, errors.New("vault payload is invalid")
 	}
 	return data, nil

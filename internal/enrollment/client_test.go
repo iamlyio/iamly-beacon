@@ -94,7 +94,7 @@ func TestEnrollRetriesAmbiguousFailureWithExactSameIdentity(t *testing.T) {
 			return
 		}
 		writer.WriteHeader(http.StatusCreated)
-		_, _ = writer.Write([]byte(`{"beacon":{"id":"bcn_abcdefghijklmnopqrstuv","name":"Production"},"protocolVersion":1}`))
+		_, _ = writer.Write([]byte(`{"beacon":{"id":"bcn_abcdefghijklmnopqrstuv","name":"Production"},"protocolVersion":2}`))
 	}))
 	defer server.Close()
 
@@ -124,7 +124,7 @@ func TestEnrollSendsContractAndReadsAssignedIdentity(t *testing.T) {
 		}
 		writer.Header().Set("Content-Type", "application/json")
 		writer.WriteHeader(http.StatusCreated)
-		_, _ = writer.Write([]byte(`{"beacon":{"id":"bcn_abcdefghijklmnopqrstuv","name":"Production","enrolledAt":"now"},"protocolVersion":1}`))
+		_, _ = writer.Write([]byte(`{"beacon":{"id":"bcn_abcdefghijklmnopqrstuv","name":"Production","enrolledAt":"now"},"protocolVersion":2}`))
 	}))
 	defer server.Close()
 

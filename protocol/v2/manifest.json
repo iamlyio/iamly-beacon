@@ -1,6 +1,6 @@
 {
-  "contractVersion": "1.0.0",
-  "protocolVersion": 1,
+  "contractVersion": "2.0.0",
+  "protocolVersion": 2,
   "routes": {
     "enroll": "/api/v1/beacon/enroll",
     "poll": "/api/v1/beacon/jobs/poll",
@@ -14,6 +14,7 @@
   "platforms": [
     "anthropic",
     "asana",
+    "aws",
     "bamboohr",
     "canva",
     "cloudflare",
@@ -23,6 +24,7 @@
     "github",
     "google",
     "linear",
+    "miro",
     "notion",
     "npmjs",
     "openai",
@@ -48,11 +50,20 @@
     "suspended",
     "unknown"
   ],
-  "deployKeyAccess": [
-    "read",
-    "write"
+  "keyKinds": [
+    "api_key",
+    "deploy_key",
+    "encryption_key"
   ],
-  "deployKeyCoverageStatuses": [
+  "keyStatuses": [
+    "active",
+    "disabled",
+    "revoked",
+    "expired",
+    "pending_deletion",
+    "unknown"
+  ],
+  "keyCoverageStatuses": [
     "complete",
     "partial",
     "unavailable"
@@ -70,7 +81,14 @@
     "reviewResultBytes": 33554432,
     "clientResponseBytes": 1048576,
     "membersPerResult": 100000,
-    "deployKeysPerResult": 100000,
+    "keysPerResult": 100000,
+    "keyIdCharacters": 1000,
+    "keyResourceCharacters": 1000,
+    "keyTextCharacters": 500,
+    "keyScopesPerRecord": 100,
+    "keyScopeCharacters": 500,
+    "keyCoveragePerResult": 3,
+    "keyCoverageMessageCharacters": 500,
     "memberTextCharacters": 500,
     "resultErrorCharacters": 2000,
     "safeIntegerMaximum": 9007199254740991

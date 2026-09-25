@@ -129,7 +129,7 @@ func TestPollSignsTheExactRequestAndParsesAJob(t *testing.T) {
 			PrivateIPs      []string `json:"privateIps"`
 			Version         string   `json:"version"`
 		}
-		if json.Unmarshal(body, &payload) != nil || payload.ProtocolVersion != 1 ||
+		if json.Unmarshal(body, &payload) != nil || payload.ProtocolVersion != ProtocolVersion ||
 			strings.Join(payload.Integrations, ",") != "github,google,slack" ||
 			strings.Join(payload.Capabilities, ",") != "integration_test_v1" ||
 			payload.Hostname == "" || payload.Version != "v1.2.3" {
@@ -141,7 +141,7 @@ func TestPollSignsTheExactRequestAndParsesAJob(t *testing.T) {
 			}
 		}
 		response.Header().Set("Content-Type", "application/json")
-		io.WriteString(response, `{"protocolVersion":1,"job":{"id":"job_abcdefghijklmnopqrstuv","reviewRunId":42,"platforms":["github","google","slack"],"pendingPlatforms":["github","google","slack"],"leaseToken":"11111111-1111-4111-8111-111111111111","claimGeneration":1,"leaseExpiresAt":"2026-08-20T12:00:00.000Z"}}`)
+		io.WriteString(response, `{"protocolVersion":2,"job":{"id":"job_abcdefghijklmnopqrstuv","reviewRunId":42,"platforms":["github","google","slack"],"pendingPlatforms":["github","google","slack"],"leaseToken":"11111111-1111-4111-8111-111111111111","claimGeneration":1,"leaseExpiresAt":"2026-08-20T12:00:00.000Z"}}`)
 	}))
 	defer server.Close()
 	client := Client{BaseURL: server.URL, BeaconID: "bcn_abcdefghijklmnopqrstuv", PrivateKey: privateKey, Version: "v1.2.3", HTTPClient: server.Client()}
@@ -158,7 +158,7 @@ func TestPollParsesTypedIntegrationTestJob(t *testing.T) {
 	_, privateKey, _ := ed25519.GenerateKey(rand.Reader)
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
 		response.Header().Set("Content-Type", "application/json")
-		io.WriteString(response, `{"protocolVersion":1,"job":{"kind":"integration_test","id":"tst_abcdefghijklmnopqrstuv","platform":"github","leaseToken":"11111111-1111-4111-8111-111111111111","claimGeneration":2,"leaseExpiresAt":"2026-08-20T12:00:00.000Z"}}`)
+		io.WriteString(response, `{"protocolVersion":2,"job":{"kind":"integration_test","id":"tst_abcdefghijklmnopqrstuv","platform":"github","leaseToken":"11111111-1111-4111-8111-111111111111","claimGeneration":2,"leaseExpiresAt":"2026-08-20T12:00:00.000Z"}}`)
 	}))
 	defer server.Close()
 	client := Client{BaseURL: server.URL, BeaconID: "bcn_abcdefghijklmnopqrstuv", PrivateKey: privateKey, HTTPClient: server.Client()}
@@ -196,7 +196,7 @@ func TestJobValidationRejectsUnboundedOrUntrustedControlPlaneInput(t *testing.T)
 		"unknown platform":   func(job *Job) { job.Platforms = []string{"dropbox"} },
 		"duplicate platform": func(job *Job) { job.Platforms = []string{"github", "github"} },
 		"too many platforms": func(job *Job) {
-			job.Platforms = []string{"anthropic", "asana", "bamboohr", "canva", "cloudflare", "dockerhub", "figma", "gcp", "github", "google", "linear", "notion", "npmjs", "openai", "slack", "tailscale", "twingate", "vercel", "zoom", "github"}
+			job.Platforms = []string{"anthropic", "asana", "aws", "bamboohr", "canva", "cloudflare", "dockerhub", "figma", "gcp", "github", "google", "linear", "miro", "notion", "npmjs", "openai", "slack", "tailscale", "twingate", "vercel", "zoom", "github"}
 		},
 		"empty pending platforms": func(job *Job) { job.PendingPlatforms = nil },
 		"unknown pending platform": func(job *Job) {
@@ -269,7 +269,7 @@ func TestUploadIntegrationTestUsesDedicatedBoundedResult(t *testing.T) {
 			LeaseToken      string `json:"leaseToken"`
 			ClaimGeneration int64  `json:"claimGeneration"`
 		}
-		if json.Unmarshal(body, &payload) != nil || payload.ProtocolVersion != 1 || payload.OK ||
+		if json.Unmarshal(body, &payload) != nil || payload.ProtocolVersion != ProtocolVersion || payload.OK ||
 			payload.ErrorCode != "permission_denied" || payload.ClaimGeneration != 1 {
 			t.Fatalf("result payload = %s", body)
 		}
@@ -301,7 +301,7 @@ func TestPollRejectsMalformedJobResponse(t *testing.T) {
 	_, privateKey, _ := ed25519.GenerateKey(rand.Reader)
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
 		response.Header().Set("Content-Type", "application/json")
-		io.WriteString(response, `{"protocolVersion":1,"job":{"id":"job_123","reviewRunId":42,"platforms":["github"],"pendingPlatforms":["github"],"leaseToken":"11111111-1111-4111-8111-111111111111","claimGeneration":1}}`)
+		io.WriteString(response, `{"protocolVersion":2,"job":{"id":"job_123","reviewRunId":42,"platforms":["github"],"pendingPlatforms":["github"],"leaseToken":"11111111-1111-4111-8111-111111111111","claimGeneration":1}}`)
 	}))
 	defer server.Close()
 	client := Client{BaseURL: server.URL, BeaconID: "bcn_abcdefghijklmnopqrstuv", PrivateKey: privateKey, HTTPClient: server.Client()}
@@ -371,6 +371,36 @@ func TestUploadRejectsOversizedResultBeforeNetwork(t *testing.T) {
 	}
 	if reached.Load() {
 		t.Fatal("oversized upload reached the network")
+	}
+}
+
+func TestUploadEncodesEmptySnapshotAsMemberArray(t *testing.T) {
+	_, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		var payload struct {
+			Members json.RawMessage `json:"members"`
+		}
+		if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
+			t.Errorf("decode result: %v", err)
+			response.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		if string(payload.Members) != "[]" {
+			t.Errorf("empty snapshot members = %s, want []", payload.Members)
+			response.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		response.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+	client := Client{BaseURL: server.URL, BeaconID: "bcn_abcdefghijklmnopqrstuv", PrivateKey: privateKey, HTTPClient: server.Client()}
+	if err := client.Upload(context.Background(), Job{
+		ID: "job_abcdefghijklmnopqrstuv", LeaseToken: "01234567-89ab-4cde-8fab-0123456789ab", ClaimGeneration: 1,
+	}, Result{Platform: "github", CapturedAt: time.Now().UTC().Format(time.RFC3339Nano)}); err != nil {
+		t.Fatalf("upload empty snapshot: %v", err)
 	}
 }
 

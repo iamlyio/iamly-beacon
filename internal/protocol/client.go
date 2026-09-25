@@ -19,7 +19,7 @@ import (
 )
 
 const (
-	ProtocolVersion           = 1
+	ProtocolVersion           = 2
 	IntegrationTestCapability = "integration_test_v1"
 	maxResponseBytes          = 1 << 20
 	maxResultUploadBytes      = 32 << 20
@@ -38,6 +38,7 @@ var (
 	supportedJobPlatforms    = map[string]struct{}{
 		"anthropic":  {},
 		"asana":      {},
+		"aws":        {},
 		"bamboohr":   {},
 		"canva":      {},
 		"cloudflare": {},
@@ -47,6 +48,7 @@ var (
 		"github":     {},
 		"google":     {},
 		"linear":     {},
+		"miro":       {},
 		"notion":     {},
 		"npmjs":      {},
 		"openai":     {},
@@ -106,34 +108,40 @@ type Spend struct {
 	Currency string  `json:"currency"`
 }
 
-// DeployKey is non-secret GitHub deploy-key inventory metadata. Beacon must
-// never place private key material or a complete public key in this type.
-type DeployKey struct {
-	ID         string  `json:"id"`
-	Name       string  `json:"name"`
-	Repository string  `json:"repository"`
-	Access     string  `json:"access"`
-	CreatedAt  *string `json:"createdAt,omitempty"`
-	LastUsedAt *string `json:"lastUsedAt,omitempty"`
-	AddedBy    *string `json:"addedBy,omitempty"`
+// KeyRecord contains only key inventory metadata. Secret values, private key
+// material, complete public keys, fingerprints, and hashes must never be sent.
+type KeyRecord struct {
+	ID         string   `json:"id"`
+	Kind       string   `json:"kind"`
+	Name       string   `json:"name"`
+	Resource   string   `json:"resource"`
+	Access     string   `json:"access"`
+	Scopes     []string `json:"scopes"`
+	Status     string   `json:"status"`
+	CreatedAt  *string  `json:"createdAt"`
+	LastUsedAt *string  `json:"lastUsedAt"`
+	ExpiresAt  *string  `json:"expiresAt"`
+	Owner      *string  `json:"owner"`
+	CreatedBy  *string  `json:"createdBy"`
 }
 
-type DeployKeyCoverage struct {
+type KeyCoverage struct {
+	Kind             string  `json:"kind"`
 	Status           string  `json:"status"`
 	ResourcesScanned int     `json:"resourcesScanned"`
 	ResourcesTotal   int     `json:"resourcesTotal"`
-	Message          *string `json:"message,omitempty"`
+	Message          *string `json:"message"`
 }
 
 type Result struct {
-	ProtocolVersion   int                `json:"protocolVersion"`
-	Platform          string             `json:"platform"`
-	CapturedAt        string             `json:"capturedAt"`
-	Members           []Member           `json:"members"`
-	Error             *string            `json:"error"`
-	ObservedSpend     *Spend             `json:"observedSpend,omitempty"`
-	DeployKeys        []DeployKey        `json:"deployKeys,omitempty"`
-	DeployKeyCoverage *DeployKeyCoverage `json:"deployKeyCoverage,omitempty"`
+	ProtocolVersion int           `json:"protocolVersion"`
+	Platform        string        `json:"platform"`
+	CapturedAt      string        `json:"capturedAt"`
+	Members         []Member      `json:"members"`
+	Error           *string       `json:"error"`
+	ObservedSpend   *Spend        `json:"observedSpend,omitempty"`
+	Keys            []KeyRecord   `json:"keys,omitempty"`
+	KeyCoverage     []KeyCoverage `json:"keyCoverage,omitempty"`
 }
 
 func New(baseURL, beaconID, privateKeyText string) (Client, error) {
@@ -198,7 +206,7 @@ func (c Client) Poll(ctx context.Context, integrations []string) (*Job, error) {
 		ProtocolVersion int `json:"protocolVersion"`
 		Job             Job `json:"job"`
 	}
-	if json.Unmarshal(response, &payload) != nil || payload.ProtocolVersion != 1 ||
+	if json.Unmarshal(response, &payload) != nil || payload.ProtocolVersion != ProtocolVersion ||
 		!validJob(payload.Job) {
 		return nil, errors.New("control plane returned an invalid job")
 	}
@@ -281,7 +289,7 @@ func (c Client) UploadIntegrationTest(ctx context.Context, job Job, ok bool, err
 		OK              bool   `json:"ok"`
 		ErrorCode       string `json:"errorCode,omitempty"`
 	}{
-		ProtocolVersion: 1,
+		ProtocolVersion: ProtocolVersion,
 		LeaseToken:      job.LeaseToken,
 		ClaimGeneration: job.ClaimGeneration,
 		OK:              ok,
@@ -352,6 +360,9 @@ func (c Client) Heartbeat(ctx context.Context, job Job) error {
 
 func (c Client) Upload(ctx context.Context, job Job, result Result) error {
 	result.ProtocolVersion = ProtocolVersion
+	if result.Members == nil {
+		result.Members = []Member{}
+	}
 	body, err := json.Marshal(struct {
 		Result
 		LeaseToken      string `json:"leaseToken"`

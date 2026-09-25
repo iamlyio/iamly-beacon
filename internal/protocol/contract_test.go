@@ -19,7 +19,7 @@ type protocolContract struct {
 }
 
 func TestRuntimeMatchesVersionedProtocolContract(t *testing.T) {
-	encoded, err := os.ReadFile("../../protocol/v1/manifest.json")
+	encoded, err := os.ReadFile("../../protocol/v2/manifest.json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -27,7 +27,7 @@ func TestRuntimeMatchesVersionedProtocolContract(t *testing.T) {
 	if err := json.Unmarshal(encoded, &contract); err != nil {
 		t.Fatal(err)
 	}
-	if contract.ContractVersion != "1.0.0" || contract.ProtocolVersion != ProtocolVersion {
+	if contract.ContractVersion != "2.0.0" || contract.ProtocolVersion != ProtocolVersion {
 		t.Fatalf("contract version = %q protocol = %d", contract.ContractVersion, contract.ProtocolVersion)
 	}
 	if !reflect.DeepEqual(contract.Capabilities, []string{IntegrationTestCapability}) {
@@ -60,7 +60,7 @@ func TestRuntimeMatchesVersionedProtocolContract(t *testing.T) {
 	}
 
 	var schema any
-	schemaBytes, err := os.ReadFile("../../protocol/v1/schema.json")
+	schemaBytes, err := os.ReadFile("../../protocol/v2/schema.json")
 	if err != nil {
 		t.Fatal(err)
 	}

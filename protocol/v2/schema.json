@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://iamly.io/protocol/beacon/v1/schema.json",
-  "title": "IAMly Beacon protocol v1",
+  "$id": "https://iamly.io/protocol/beacon/v2/schema.json",
+  "title": "IAMly Beacon protocol v2",
   "oneOf": [
     { "$ref": "#/$defs/enrollmentRequest" },
     { "$ref": "#/$defs/enrollmentResponse" },
@@ -12,11 +12,11 @@
     { "$ref": "#/$defs/integrationTestResultRequest" }
   ],
   "$defs": {
-    "protocolVersion": { "const": 1 },
+    "protocolVersion": { "const": 2 },
     "platform": {
       "enum": [
-        "anthropic", "asana", "bamboohr", "canva", "cloudflare", "dockerhub",
-        "figma", "gcp", "github", "google", "linear", "notion", "npmjs",
+        "anthropic", "asana", "aws", "bamboohr", "canva", "cloudflare", "dockerhub",
+        "figma", "gcp", "github", "google", "linear", "miro", "notion", "npmjs",
         "openai", "slack", "tailscale", "twingate", "vercel", "zoom"
       ]
     },
@@ -59,29 +59,37 @@
         "currency": { "type": "string", "pattern": "^[A-Z]{3}$" }
       }
     },
-    "deployKey": {
+    "keyKind": { "enum": ["api_key", "deploy_key", "encryption_key"] },
+    "keyRecord": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "name", "repository", "access", "createdAt", "lastUsedAt", "addedBy"],
+      "required": ["id", "kind", "name", "resource", "access", "scopes", "status", "createdAt", "lastUsedAt", "expiresAt", "owner", "createdBy"],
       "properties": {
-        "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "id": { "type": "string", "minLength": 1, "maxLength": 1000, "pattern": "\\S" },
+        "kind": { "$ref": "#/$defs/keyKind" },
         "name": { "type": "string", "maxLength": 500 },
-        "repository": { "type": "string", "maxLength": 500 },
-        "access": { "enum": ["read", "write"] },
+        "resource": { "type": "string", "minLength": 1, "maxLength": 1000, "pattern": "\\S" },
+        "access": { "type": "string", "maxLength": 500 },
+        "scopes": { "type": "array", "maxItems": 100, "items": { "type": "string", "maxLength": 500 } },
+        "status": { "enum": ["active", "disabled", "revoked", "expired", "pending_deletion", "unknown"] },
         "createdAt": { "oneOf": [{ "$ref": "#/$defs/timestamp" }, { "type": "null" }] },
         "lastUsedAt": { "oneOf": [{ "$ref": "#/$defs/timestamp" }, { "type": "null" }] },
-        "addedBy": { "$ref": "#/$defs/nullableText" }
+        "expiresAt": { "oneOf": [{ "$ref": "#/$defs/timestamp" }, { "type": "null" }] },
+        "owner": { "$ref": "#/$defs/nullableText" },
+        "createdBy": { "$ref": "#/$defs/nullableText" }
       }
     },
-    "deployKeyCoverage": {
+    "keyCoverage": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["status", "resourcesScanned", "resourcesTotal", "message"],
+      "$comment": "Runtime requires resourcesScanned <= resourcesTotal, with equality for complete coverage.",
+      "required": ["kind", "status", "resourcesScanned", "resourcesTotal", "message"],
       "properties": {
+        "kind": { "$ref": "#/$defs/keyKind" },
         "status": { "enum": ["complete", "partial", "unavailable"] },
-        "resourcesScanned": { "type": "integer", "minimum": 0 },
-        "resourcesTotal": { "type": "integer", "minimum": 0 },
-        "message": { "type": ["string", "null"], "maxLength": 500 }
+        "resourcesScanned": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+        "resourcesTotal": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+        "message": { "$ref": "#/$defs/nullableText" }
       }
     },
     "ownership": {
@@ -195,7 +203,18 @@
     "reviewResultRequest": {
       "type": "object",
       "additionalProperties": false,
+      "$comment": "Maximum encoded request size is 33554432 bytes. Runtime rejects duplicate key identities (platform, kind, resource, id), duplicate coverage kinds, records without matching non-unavailable coverage, and invalid calendar dates. Missing coverage is never authoritative.",
       "required": ["protocolVersion", "platform", "capturedAt", "members", "error", "leaseToken", "claimGeneration"],
+      "allOf": [{
+        "if": { "properties": { "platform": { "const": "aws" } } },
+        "then": {
+          "properties": {
+            "members": { "maxItems": 0 },
+            "keys": { "items": { "properties": { "kind": { "const": "encryption_key" } } } },
+            "keyCoverage": { "items": { "properties": { "kind": { "const": "encryption_key" } } } }
+          }
+        }
+      }],
       "properties": {
         "protocolVersion": { "$ref": "#/$defs/protocolVersion" },
         "platform": { "$ref": "#/$defs/platform" },
@@ -203,8 +222,8 @@
         "members": { "type": "array", "maxItems": 100000, "items": { "$ref": "#/$defs/member" } },
         "error": { "type": ["string", "null"], "maxLength": 2000 },
         "observedSpend": { "$ref": "#/$defs/spend" },
-        "deployKeys": { "type": "array", "maxItems": 100000, "items": { "$ref": "#/$defs/deployKey" } },
-        "deployKeyCoverage": { "$ref": "#/$defs/deployKeyCoverage" },
+        "keys": { "type": "array", "maxItems": 100000, "uniqueItems": true, "items": { "$ref": "#/$defs/keyRecord" } },
+        "keyCoverage": { "type": "array", "maxItems": 3, "uniqueItems": true, "items": { "$ref": "#/$defs/keyCoverage" } },
         "leaseToken": { "$ref": "#/$defs/leaseToken" },
         "claimGeneration": { "$ref": "#/$defs/positiveSafeInteger" }
       }

@@ -40,6 +40,7 @@ func ConnectionErrorCodeOf(err error) ConnectionErrorCode {
 var ConnectionTesters = map[string]ConnectionTester{
 	"anthropic":  testAnthropicConnection,
 	"asana":      testAsanaConnection,
+	"aws":        testAWSConnection,
 	"bamboohr":   testBambooHRConnection,
 	"canva":      testCanvaConnection,
 	"cloudflare": testCloudflareConnection,
@@ -49,6 +50,7 @@ var ConnectionTesters = map[string]ConnectionTester{
 	"github":     testGitHubConnection,
 	"google":     testGoogleConnection,
 	"linear":     testLinearConnection,
+	"miro":       testMiroConnection,
 	"notion":     testNotionConnection,
 	"npmjs":      testNPMConnection,
 	"openai":     testOpenAIConnection,
@@ -277,6 +279,11 @@ func testFigmaConnection(ctx context.Context, credentials map[string]string) err
 	}
 	endpoint := figmaSCIMBaseURL + "/" + url.PathEscape(credentials["tenantId"]) + "/Users?count=1&startIndex=1"
 	return bearerProbe(ctx, "Figma", endpoint, credentials["token"], "application/scim+json")
+}
+
+func testMiroConnection(ctx context.Context, credentials map[string]string) error {
+	_, err := miroMembersPage(ctx, credentials, "", 1)
+	return err
 }
 
 func testGCPConnection(ctx context.Context, credentials map[string]string) error {

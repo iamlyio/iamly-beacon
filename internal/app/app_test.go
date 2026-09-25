@@ -69,7 +69,7 @@ func TestExecuteBeaconJobUploadsConnectorFailureWithoutStoppingSuccessfulCollect
 	output := &bytes.Buffer{}
 	application := &App{stdout: output}
 	job := protocol.Job{
-		ID: "job_test", Platforms: []string{"google", "github"},
+		ID: "job_test", Platforms: []string{"google", "github"}, PendingPlatforms: []string{"google", "github"},
 		LeaseToken: "lease_test", ClaimGeneration: 1,
 	}
 	credentials := map[string]map[string]string{
@@ -130,7 +130,7 @@ func TestExecuteBeaconJobBoundsCollectorTimeAndCapturesAfterCollection(t *testin
 	startedAt := time.Now().UTC()
 	application := &App{stdout: io.Discard, collectionTimeout: 10 * time.Millisecond}
 	job := protocol.Job{
-		ID: "job_timeout_test", Platforms: []string{"google"},
+		ID: "job_timeout_test", Platforms: []string{"google"}, PendingPlatforms: []string{"google"},
 		LeaseToken: "lease_timeout_test", ClaimGeneration: 1,
 	}
 	if err := application.executeBeaconJob(context.Background(), client, job, map[string]map[string]string{
@@ -201,7 +201,7 @@ func TestExecuteBeaconJobUploadsEnrichedAppBeforeOtherConnectorsFinish(t *testin
 	}
 	application := &App{stdout: io.Discard}
 	job := protocol.Job{
-		ID: "job_stream_test", Platforms: []string{"google", "github"},
+		ID: "job_stream_test", Platforms: []string{"google", "github"}, PendingPlatforms: []string{"google", "github"},
 		LeaseToken: "lease_stream_test", ClaimGeneration: 1,
 	}
 	done := make(chan error, 1)
@@ -241,9 +241,23 @@ func TestRuntimeRejectsNonCanonicalStoredControlPlane(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, value := range []string{"https://attacker.example", canonicalControlPlane + "/proxy", "http://localhost:3000"} {
-		if err := validateRuntimeControlPlane(value); err == nil {
-			t.Fatalf("runtime accepted stored control plane %q", value)
+		err := validateRuntimeControlPlane(value)
+		if allowDevelopmentControlPlane && err != nil {
+			t.Fatalf("development runtime rejected stored control plane %q: %v", value, err)
 		}
+		if !allowDevelopmentControlPlane && err == nil {
+			t.Fatalf("release runtime accepted stored control plane %q", value)
+		}
+	}
+}
+
+func TestReleaseRuntimeIgnoresControlPlaneEnvironment(t *testing.T) {
+	if allowDevelopmentControlPlane {
+		t.Skip("release-only assertion")
+	}
+	t.Setenv(developmentControlPlaneEnvironment, "https://development.example")
+	if controlPlaneURL := runtimeControlPlaneURL(); controlPlaneURL != canonicalControlPlane {
+		t.Fatalf("release runtime selected %q", controlPlaneURL)
 	}
 }
 

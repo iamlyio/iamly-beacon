@@ -74,6 +74,30 @@ Piping a remote script into a shell trusts the GitHub repository and delivery
 path. Review [`install.sh`](install.sh) first or use the checksum-first manual
 installation below when that trust model is not appropriate.
 
+## Local control-plane development
+
+Published Beacon binaries always ignore
+`IAMLY_BEACON_CONTROL_PLANE_URL` and remain pinned to
+`https://beacon.iamly.io`. Build the explicitly separate development binary
+when testing a local Beacon API through an HTTPS tunnel:
+
+```sh
+make development-build
+```
+
+The resulting `beacon-development` reads the override only at runtime. Keep its
+identity and collector credentials in a separate directory:
+
+```sh
+BEACON_HOME="$HOME/.config/iamly-beacon-development" \
+IAMLY_BEACON_CONTROL_PLANE_URL="https://example.trycloudflare.com" \
+./beacon-development configure --local
+```
+
+Do not replace the released `beacon` binary or point the production service at
+a development tunnel. The companion runner in `iamly-beacon-api` launches this
+development binary over SSH while leaving the production service active.
+
 ## Upgrade
 
 Upgrade to the newest published Beacon release from the same installation
@@ -206,9 +230,9 @@ version from `VERSION`; `make build` stamps that value into `beacon version`.
 - Signed, nonce-protected outbound review-job polling with concurrent per-app uploads.
 - Bounded transient retries for vendor APIs and idempotent result uploads; expired jobs resume with only their missing applications.
 - Strict vendor-response size and pagination limits; redirects are refused so local authorization headers cannot cross request boundaries.
-- Nineteen local, read-only account collectors spanning HR, identity, cloud,
+- Local, read-only account collectors spanning HR, identity, cloud,
   developer, collaboration, network, and AI platforms.
-- GitHub deploy-key inventory across accessible organization repositories; only non-secret metadata is uploaded, never key material.
+- Metadata-only Keys inventory: GitHub deploy keys and approved fine-grained PATs, plus GCP/AWS KMS encryption keys. Permission failures are reported per key kind without discarding account data; secret values are never uploaded.
 - Best-effort current-month spend from GitHub, OpenAI, Anthropic, and
   Cloudflare when their read-only billing APIs are available.
 - Unit tests for enrollment, request signing, encryption, permissions, freshness, and tamper detection.
@@ -235,23 +259,36 @@ port.
 | --- | --- | --- |
 | BambooHR | `bamboohr.companyDomain`, `bamboohr.apiKey` | Complete employee roster, active/inactive lifecycle, work email, job title, department, hire date |
 | Google Workspace | `google.clientEmail`, `google.privateKey`, `google.adminEmail` | Directory identities, status, administrator role, creation time, last login |
-| GCP | `gcp.clientEmail`, `gcp.resourceScope`, `gcp.privateKey` | Direct IAM users and service accounts, lifecycle, and granted roles in one project, folder, or organization |
-| GitHub | `github.token`, `github.org` | Members, outside collaborators, roles, public profile enrichment, deploy keys, available billing usage |
+| GCP | `gcp.clientEmail`, `gcp.resourceScope`, `gcp.privateKey` | Direct IAM users and service accounts plus KMS logical-key/version metadata in one project, folder, or organization |
+| AWS | `aws.region`; optional `aws.accessKeyId`, `aws.secretAccessKey`, `aws.sessionToken` | KMS key metadata, aliases, creation/state/expiry, and supported rotation metadata in the caller account and explicit region; no IAM member directory |
+| GitHub | `github.token`, `github.org` | Members, outside collaborators, roles, public profile enrichment, active and disabled deploy keys, approved organization fine-grained PAT metadata when authorized, available billing usage |
 | Slack | `slack.userToken` | Members, guest types, status, last-seen activity, billable-seat facts |
 | Tailscale | `tailscale.clientId`, `tailscale.clientSecret` | Tailnet users, roles, lifecycle status, and activity |
 | Twingate | `twingate.network`, `twingate.apiToken` | Network users, roles, types, and lifecycle status |
 | Notion | `notion.token` | Workspace people and bots visible to an internal integration |
 | Zoom | `zoom.accountId`, `zoom.clientId`, `zoom.clientSecret` | Active, inactive, and pending users, roles, license type, last login |
 | Figma | `figma.token`, `figma.tenantId` | SCIM-provisioned users, lifecycle, administrator flag, and seat type |
+| Miro | `miro.orgId`, `miro.token` | Enterprise organization members, active/deactivated lifecycle, guest and administrator roles, license names, and last activity |
 | OpenAI | `openai.adminApiKey` | API Platform organization users, roles, and current-month organization cost |
 | Anthropic | `anthropic.adminApiKey` | Console organization users, roles, and current-month organization cost |
-| Linear | `linear.apiKey` | Active and disabled workspace users, roles, and activity |
+| Linear | `linear.apiKey` | Active and disabled workspace users, roles, and activity; API-key inventory explicitly unavailable through the public API |
 | Vercel | `vercel.token`, `vercel.teamId` | Team members, roles, and pending email invitations |
 | Asana | `asana.token`, `asana.workspaceGid` | Users visible in one workspace or organization |
 | Canva | `canva.token` | SCIM-managed team users and lifecycle status |
 | Cloudflare | `cloudflare.accountId`, `cloudflare.token` | Account members, invitation status, roles, permission groups, and account subscription prices |
 | npm | `npmjs.token`, `npmjs.org` | Organization members and roles |
 | Docker Hub | `dockerhub.identifier`, `dockerhub.secret`, `dockerhub.org` | Organization members, roles, and recent activity |
+
+Miro requires an **Enterprise** organization and a **Company Admin** access token
+with the read-only `organizations:read` scope. Run `beacon set miro` and supply
+the organization ID and token; `beacon test miro` checks one organization member.
+The [organization members API](https://developers.miro.com/reference/enterprise-get-organization-members)
+includes active and deactivated users without an activity filter. Beacon follows
+bounded cursor pagination and rejects malformed or incomplete responses. Miro
+license and administrator-role names are preserved in the role observation;
+last activity is normalized to UTC. Names and creation dates are unavailable
+from this endpoint and remain unset. Beacon never reads boards or board content,
+infers billable seats, or estimates Miro spend.
 
 Each supported collector has guided credential setup:
 
@@ -266,7 +303,7 @@ beacon set slack
 beacon set tailscale
 beacon set twingate
 beacon set zoom
-# Also: anthropic, asana, canva, dockerhub, figma, linear, npmjs, openai, and vercel
+# Also: anthropic, asana, canva, dockerhub, figma, linear, miro, npmjs, openai, and vercel
 ```
 
 Beacon prompts for every required value, masks tokens and private keys, and
@@ -280,7 +317,7 @@ Test a saved credential before a review:
 beacon test github
 ```
 
-The test decrypts only that integration's saved values and has a 30-second
+The test uses only that integration's saved credential values and has a 30-second
 deadline. It uses the smallest bounded, read-only vendor probe, requests at
 most one account where the API supports a page size, and performs a token
 exchange first only when the vendor requires it. It never starts a review or
@@ -397,6 +434,82 @@ the AWS SDK default credential chain, including environment, shared config,
 ECS task roles, and EC2 instance roles. AWS KMS requests bind the key identifier
 as encryption context.
 
+## Cloud key inventory
+
+These read-only collectors are separate from the KMS **vault encryption**
+backends above. Inventory never requests, exports, or uploads key material.
+Key permission failures produce partial/unavailable key coverage without
+discarding a successfully collected member roster.
+
+### GCP KMS inventory
+
+Run `beacon set gcp` with the existing `clientEmail`, `privateKey`, and
+`resourceScope` (`projects/PROJECT`, `folders/NUMBER`, or
+`organizations/NUMBER`). Enable Cloud Asset Inventory and Cloud KMS APIs.
+In addition to the existing IAM roster permissions, grant a read-only custom
+role containing:
+
+- `cloudasset.assets.searchAllResources` on the configured discovery scope.
+- `cloudkms.cryptoKeys.list` on the key rings in that scope.
+- `cloudkms.cryptoKeyVersions.list` on their keys.
+
+Beacon uses scoped [Cloud Asset resource search](https://cloud.google.com/asset-inventory/docs/reference/rest/v1/TopLevel/searchAllResources)
+to discover [supported KMS key-ring assets](https://cloud.google.com/asset-inventory/docs/supported-asset-types),
+then paginates [CryptoKeys](https://cloud.google.com/kms/docs/reference/rest/v1/projects.locations.keyRings.cryptoKeys/list)
+and [CryptoKeyVersions](https://cloud.google.com/kms/docs/reference/rest/v1/projects.locations.keyRings.cryptoKeys.cryptoKeyVersions/list)
+with the BASIC version view. Discovery spans all locations under that scope
+and is subject to Cloud Asset indexing delay. Coverage counts key rings;
+the inventory has separate records for logical keys and versions. Logical
+keys have no native lifecycle state and remain `unknown`; version states,
+creation timestamps, purpose, algorithm/protection, scheduled destruction,
+and configured rotation metadata are retained where returned. Scheduled
+destruction is not mislabeled as expiration.
+
+### AWS KMS inventory
+
+Run `beacon set aws`, enter an explicit region such as `us-east-1`, and leave
+the three access-key fields blank to use the AWS SDK default credential
+chain (prefer an attached workload role or a configured role profile).
+Alternatively, enter both access-key ID and secret access key, plus the
+session token for temporary credentials. All entered values are encrypted
+in the local vault. Guided setup replaces saved AWS values, so selecting
+the default chain removes an old static key rather than silently reusing it.
+
+Grant `kms:ListKeys` and `kms:ListAliases` on `*`, and `kms:DescribeKey` and
+`kms:GetKeyRotationStatus` on the reviewed key ARNs, including the required
+key-policy authorization. No encrypt/decrypt, key-policy, grant, tag,
+CloudTrail, or IAM-directory permissions are required. `beacon test aws`
+performs one bounded `ListKeys` read; passing this probe does not establish
+permission to read every key's details.
+
+The signed SDK requests use [ListKeys](https://docs.aws.amazon.com/kms/latest/APIReference/API_ListKeys.html),
+[ListAliases](https://docs.aws.amazon.com/kms/latest/APIReference/API_ListAliases.html),
+[DescribeKey](https://docs.aws.amazon.com/kms/latest/APIReference/API_DescribeKey.html),
+and supported [GetKeyRotationStatus](https://docs.aws.amazon.com/kms/latest/APIReference/API_GetKeyRotationStatus.html).
+Only the caller's account and configured region are scanned; key ARNs retain
+account/region scope. AWS-managed keys are included, but unassociated
+predefined aliases are not materialized by calling `DescribeKey` on an alias.
+AWS intentionally returns an empty member roster: this is not an IAM user or
+role collector.
+
+### Unknown metadata and bounds
+
+Neither provider's KMS metadata APIs expose a responsible human owner,
+creator identity, or last cryptographic use. These fields remain explicitly
+null; aliases, labels, key policies, grants, and creator identity are never
+treated as proof of ownership. [GCP Data Access audit logs](https://cloud.google.com/kms/docs/audit-logging)
+and [AWS CloudTrail](https://docs.aws.amazon.com/kms/latest/developerguide/logging-using-cloudtrail.html)
+can contain usage events, but logging/retention may be incomplete and this
+collector does not query those logs. A missing timestamp never means a key
+was unused.
+
+Cloud inventories stop at 100,000 records, 1,000 pages per list, 10,000
+metadata API requests, and 8 MiB per metadata response; the snapshot upload
+has an additional 32 MiB limit. Permission, pagination, scope-validation,
+provider-response, and safety-limit failures are explicit coverage gaps.
+On incomplete discovery, totals count only discovered resources, not an
+invented account-wide total.
+
 ## GitHub collection
 
 Run `beacon set github` and follow the prompts, or use the bounded stdin
@@ -407,10 +520,10 @@ github.token
 github.org
 ```
 
-Use a fine-grained personal access token owned by the organization and select all repositories. Grant read-only access to:
+For members and deploy keys, use a fine-grained personal access token with the organization as resource owner and select all repositories. Grant read-only access to:
 
 - Repository Metadata, to enumerate repositories.
-- Repository Administration, to inventory active deploy keys.
+- Repository Administration, to inventory deploy-key metadata and status.
 - Organization Members, to inventory members and outside collaborators.
 - Organization Administration, to read current-month billing usage.
 
@@ -422,6 +535,45 @@ adds the token owner's verified primary email only; it does not reveal private
 addresses for the rest of the organization.
 
 Billing collection requires GitHub's enhanced billing platform. The organization usage-summary endpoint is currently a public preview, so Beacon treats unavailable billing as optional enrichment and still uploads a valid account and deploy-key snapshot.
+
+### GitHub key metadata
+
+The [deploy-key API](https://docs.github.com/en/rest/deploy-keys/deploy-keys#list-deploy-keys)
+reports repository, title, read/write access, creation time, optional last use,
+and the adding user. Beacon retains active and disabled deploy keys with their
+provider-reported status; an omitted enabled flag produces an unknown status.
+The adding user is **Created by**, never an inferred owner.
+Owner and expiry remain unknown. SSH public-key material is discarded locally.
+
+The [approved fine-grained PAT API](https://docs.github.com/en/rest/orgs/personal-access-tokens#list-fine-grained-personal-access-tokens-with-access-to-organization-resources)
+requires a **GitHub App** user or installation token with organization **Personal
+access tokens: read** permission, supplied through `github.token`. A personal
+access token cannot enumerate this inventory. Beacon collects vendor token ID,
+name, owner, organization/repository permission scopes, repository selection,
+expired state, expiry, and last use. GitHub exposes an access-grant time, not the
+token's creation time; creation and creator therefore remain unknown.
+Classic PATs and pending access requests are outside this endpoint's scope.
+
+PAT and deploy-key collection run independently. A denied API or repository,
+malformed response, repeated page, or safety limit produces unavailable/partial
+coverage rather than erasing successful accounts or previously read metadata.
+Repository totals count only discovered repositories visible to the credential;
+hidden repositories cannot be estimated. Scans are bounded to 1,000 pages per
+list, 100,000 records per inventory, and the protocol's 32 MiB upload ceiling.
+
+### Linear API-key limitation
+
+Linear's [public GraphQL schema](https://github.com/linear/linear/blob/master/packages/sdk/src/schema.graphql)
+has no readable personal API-key inventory model or query. Beacon consequently
+reports `api_key` coverage as **unavailable**, with no invented key rows.
+Workspace administrators can inspect and revoke real keys manually in
+**Settings → Administration → API**, as described in
+[Linear's API and Webhooks guide](https://linear.app/docs/api-and-webhooks).
+The [Enterprise audit log](https://linear.app/docs/audit-log) is owner-only,
+retains 90 days, and exposes untyped event metadata rather than a documented
+current-key inventory. Beacon does not read opaque audit metadata, request key
+values, infer a key from the connector credential, or substitute a viewer for a
+key owner. Linear account collection is unaffected by this limitation.
 
 ## Spend collection
 

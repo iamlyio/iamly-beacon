@@ -179,6 +179,7 @@ type guidedSecretField struct {
 	label       string
 	placeholder string
 	secret      bool
+	optional    bool
 }
 
 type guidedSecretSpec struct {
@@ -198,6 +199,15 @@ var guidedSecretSpecs = map[string]guidedSecretSpec{
 		fields: []guidedSecretField{
 			{name: "token", label: "Personal access token", placeholder: "paste token", secret: true},
 			{name: "workspaceGid", label: "Workspace ID", placeholder: "1234567890"},
+		},
+	},
+	"aws": {
+		label: "AWS KMS",
+		fields: []guidedSecretField{
+			{name: "region", label: "AWS region", placeholder: "us-east-1"},
+			{name: "accessKeyId", label: "Access key ID (optional)", placeholder: "blank uses SDK role/provider", secret: true, optional: true},
+			{name: "secretAccessKey", label: "Secret access key (optional pair)", placeholder: "required with access key ID", secret: true, optional: true},
+			{name: "sessionToken", label: "Session token (optional)", placeholder: "for temporary access keys only", secret: true, optional: true},
 		},
 	},
 	"bamboohr": {
@@ -262,6 +272,13 @@ var guidedSecretSpecs = map[string]guidedSecretSpec{
 		label: "Linear",
 		fields: []guidedSecretField{
 			{name: "apiKey", label: "Personal API key", placeholder: "lin_api_…", secret: true},
+		},
+	},
+	"miro": {
+		label: "Miro",
+		fields: []guidedSecretField{
+			{name: "orgId", label: "Enterprise organization ID", placeholder: "3074457345821141000"},
+			{name: "token", label: "Company Admin token (organizations:read)", placeholder: "paste access token", secret: true},
 		},
 	},
 	"notion": {
@@ -403,7 +420,11 @@ func GuidedSecrets(integration string) (GuidedSecretResult, bool, error) {
 	}
 	values := make(map[string]string, len(spec.fields))
 	for index, field := range spec.fields {
-		values[field.name] = strings.TrimSpace(final.inputs[index].Value())
+		value := strings.TrimSpace(final.inputs[index].Value())
+		if field.optional && value == "" {
+			continue
+		}
+		values[field.name] = value
 	}
 	return GuidedSecretResult{Integration: integration, Values: values}, true, nil
 }
