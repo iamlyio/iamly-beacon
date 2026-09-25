@@ -11,8 +11,8 @@ import (
 	"github.com/iamlyio/iamly-beacon/internal/protocol"
 )
 
-const awsTestKeyOne = "1234abcd-12ab-34cd-56ef-1234567890ab"
-const awsTestKeyTwo = "2234abcd-12ab-34cd-56ef-1234567890ab"
+const awsTestKeyOne = "11111111-1111-4111-8111-111111111111"
+const awsTestKeyTwo = "22222222-2222-4222-8222-222222222222"
 const awsTestARNPrefix = "arn:aws:kms:us-east-1:123456789012:key/"
 
 func awsTestCredentials() map[string]string {

@@ -35,6 +35,8 @@ All notable changes to IAMly Beacon are documented here. The project follows
   invalid vault payloads erase any partially decoded secrets before returning.
 - Review orchestration uses the protocol-validated pending integration list
   directly, removing an unreachable fallback to already completed integrations.
+- Synthetic UUID fixtures no longer trigger credential detection. Only their
+  exact historical false-positive fingerprints are excluded from secret scans.
 
 ## [2.2.0-rc.11] - 2026-08-21
 

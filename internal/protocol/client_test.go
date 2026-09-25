@@ -398,7 +398,7 @@ func TestUploadEncodesEmptySnapshotAsMemberArray(t *testing.T) {
 	defer server.Close()
 	client := Client{BaseURL: server.URL, BeaconID: "bcn_abcdefghijklmnopqrstuv", PrivateKey: privateKey, HTTPClient: server.Client()}
 	if err := client.Upload(context.Background(), Job{
-		ID: "job_abcdefghijklmnopqrstuv", LeaseToken: "01234567-89ab-4cde-8fab-0123456789ab", ClaimGeneration: 1,
+		ID: "job_abcdefghijklmnopqrstuv", LeaseToken: "11111111-1111-4111-8111-111111111111", ClaimGeneration: 1,
 	}, Result{Platform: "github", CapturedAt: time.Now().UTC().Format(time.RFC3339Nano)}); err != nil {
 		t.Fatalf("upload empty snapshot: %v", err)
 	}
