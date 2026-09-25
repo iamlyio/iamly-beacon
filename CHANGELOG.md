@@ -37,6 +37,8 @@ All notable changes to IAMly Beacon are documented here. The project follows
   directly, removing an unreachable fallback to already completed integrations.
 - Synthetic UUID fixtures no longer trigger credential detection. Only their
   exact historical false-positive fingerprints are excluded from secret scans.
+- Upgrade gRPC to v1.83.1 and its required Google client dependencies to fix
+  reachable HTTP/2 memory exhaustion (GO-2026-6348).
 
 ## [2.2.0-rc.11] - 2026-08-21
 
